@@ -1196,6 +1196,12 @@ ${buildReferenceBrief(appliedSources)}`;
     setExportMessage("PDF downloaded successfully.");
   };
 
+  const navigateTo = (item: string) => {
+    setActive(item);
+    const selector = item === "Workspace" ? ".topbar" : item === "Projects" ? ".project-strip" : item === "Knowledge base" ? ".source-list" : item === "Voice-over library" ? ".voiceover-generator" : ".export-panel";
+    document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -1220,22 +1226,7 @@ ${buildReferenceBrief(appliedSources)}`;
             <button
               key={item}
               className={active === item ? "nav-item active" : "nav-item"}
-              onClick={() => {
-                setActive(item);
-                const selector =
-                  item === "Workspace"
-                    ? ".topbar"
-                    : item === "Projects"
-                      ? ".project-strip"
-                      : item === "Knowledge base"
-                        ? ".source-list"
-                        : item === "Voice-over library"
-                          ? ".voiceover-generator"
-                          : ".export-panel";
-                document
-                  .querySelector(selector)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
+              onClick={() => navigateTo(item)}
             >
               <span>
                 {item === "Workspace"
@@ -1271,6 +1262,10 @@ ${buildReferenceBrief(appliedSources)}`;
       </aside>
 
       <section className="content">
+        <div className="mobile-appbar" aria-label="DANA AI mobile header">
+          <div className="mobile-brand"><span className="brand-mark">D</span><div><b>DANA AI</b><small>PRODUCTION STUDIO</small></div></div>
+          <button type="button" className="mobile-settings" aria-label="Open settings" onClick={() => setShowSettings(true)}>⚙</button>
+        </div>
         <input
           ref={fileInput}
           type="file"
@@ -2313,6 +2308,11 @@ ${buildReferenceBrief(appliedSources)}`;
           )}
         </section>
       </section>
+      <nav className="mobile-bottom-nav" aria-label="Mobile workspace navigation">
+        {[["Workspace","◈","Home"],["Projects","▣","Project"],["Knowledge base","◫","Library"],["Voice-over library","▤","Voice"],["Exports","↗","Export"]].map(([item,icon,label]) => (
+          <button type="button" key={item} className={active === item ? "active" : ""} onClick={() => navigateTo(item)}><span>{icon}</span><small>{label}</small></button>
+        ))}
+      </nav>
     </main>
   );
 }

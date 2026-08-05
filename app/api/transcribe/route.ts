@@ -8,7 +8,7 @@ const FALLBACK_MODEL = "gemini-2.5-flash";
 
 type SegmentInfo = { startSeconds: number; originalFile: string };
 
-const NATIVE_FFMPEG_WORKER = process.env.FFMPEG_WORKER_URL?.replace(/\/$/, "");
+const NATIVE_FFMPEG_WORKER = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
 
 async function uploadToGemini(file: File, apiKey: string) {
   const bytes = await file.arrayBuffer();

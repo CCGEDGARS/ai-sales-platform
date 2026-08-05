@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: ffmpeg-worker
+    runtime: docker
+    plan: free
+    branch: main
+    rootDir: services/ffmpeg-worker
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health

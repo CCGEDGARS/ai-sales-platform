@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";\nimport { getStoredKey } from "../../lib/credentials";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const REQUIRED_REFERENCE_COUNT = 7;
@@ -67,7 +67,7 @@ function ratioMetrics(text: string, finalRuntimeSeconds: number) {
 export async function POST(request: Request) {
   try {
     const body = await request.json() as { apiKey?: string; transcript?: string; prompt?: string; tone?: string; context?: string; appliedSources?: string[]; finalRuntimeSeconds?: number };
-    const apiKey = String(body.apiKey || "").trim();
+    const apiKey = String(body.apiKey || "").trim() || await getStoredKey("openai");
     if (!apiKey) return NextResponse.json({ ok: false, message: "OpenAI API key is missing. Connect OpenAI in Settings first." }, { status: 400 });
     if (!body.transcript?.trim()) return NextResponse.json({ ok: false, message: "A validated transcript is required before generating voice-over." }, { status: 400 });
     const appliedSources = Array.isArray(body.appliedSources) ? body.appliedSources : [];

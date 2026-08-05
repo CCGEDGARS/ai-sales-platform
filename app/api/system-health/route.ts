@@ -38,12 +38,12 @@ async function openAIHealth() {
 }
 
 async function ffmpegHealth() {
-  const worker = process.env.FFMPEG_WORKER_URL?.replace(/\/$/, "");
-  if (!worker) return { configured: false, signal: "problem" as Signal, message: "FFmpeg worker URL is not configured." };
+  const worker = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
   try {
     const response = await fetch(`${worker}/health`, { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) return { configured: true, signal: "problem" as Signal, message: `FFmpeg worker returned HTTP ${response.status}.` };
+    const healthy = response.ok && data?.ok === true && data?.ffmpeg === true && data?.ffprobe === true;
+    if (!healthy) return { configured: true, signal: "problem" as Signal, message: `FFmpeg worker returned HTTP ${response.status}.` };
     return { configured: true, signal: "healthy" as Signal, message: `Native processor online${data?.version ? ` · ${data.version}` : ""}.` };
   } catch {
     return { configured: true, signal: "problem" as Signal, message: "FFmpeg worker is unreachable." };

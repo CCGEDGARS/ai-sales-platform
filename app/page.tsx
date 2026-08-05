@@ -1186,8 +1186,11 @@ ${buildReferenceBrief(appliedSources)}`;
         color: rgb(0.09, 0.16, 0.13),
       }),
     );
+    const pdfBytes = await pdf.save();
+    const pdfArrayBuffer = new ArrayBuffer(pdfBytes.byteLength);
+    new Uint8Array(pdfArrayBuffer).set(pdfBytes);
     downloadBlob(
-      new Blob([await pdf.save()], { type: "application/pdf" }),
+      new Blob([pdfArrayBuffer], { type: "application/pdf" }),
       "dana-ai-production-export.pdf",
     );
     setExportMessage("PDF downloaded successfully.");

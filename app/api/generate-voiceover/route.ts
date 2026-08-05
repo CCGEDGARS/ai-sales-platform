@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";\nimport { getStoredKey } from "../../lib/credentials";
+import { NextResponse } from "next/server";
+import { getStoredKey } from "../../lib/credentials";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const REQUIRED_REFERENCE_COUNT = 7;

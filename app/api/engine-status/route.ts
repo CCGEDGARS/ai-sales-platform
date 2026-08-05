@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const url = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
+  const url = process.env.FFMPEG_WORKER_URL?.replace(/\/$/, "");
   if (!url) return NextResponse.json({ ok: true, nativeFfmpeg: false, mode: "short-video-only" });
   try {
     const response = await fetch(`${url}/health`, { cache: "no-store" });

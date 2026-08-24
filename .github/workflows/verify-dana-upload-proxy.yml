@@ -1,0 +1,34 @@
+name: Verify DANA upload proxy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/api/gemini-upload-session/route.ts
+      - services/ffmpeg-worker/main.py
+      - tests/rendered-html.test.mjs
+      - .github/workflows/verify-dana-upload-proxy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compile native worker
+        run: python3 -m py_compile services/ffmpeg-worker/main.py
+      - name: Run regression suite
+        run: npm test
+      - name: Build production app
+        run: npm run build
+      - name: Audit production runtime
+        run: npm audit --omit=dev --audit-level=high

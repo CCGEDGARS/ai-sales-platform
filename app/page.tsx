@@ -53,7 +53,7 @@ type SegmentPayload = {
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com";
 const GEMINI_DIRECT_MODEL = "gemini-3.6-flash";
-const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
+const VERCEL_NATIVE_PROXY_LIMIT = 3_800_000;
 type Mp4Track = {
   id: number;
   video?: unknown;
@@ -334,34 +334,29 @@ export default function Home() {
   const formatElapsed = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-  const uploadVideoDirectlyToGemini = async (file: File, apiKey: string) => {
-    const bytes = await file.arrayBuffer();
-    const start = await fetch(`${GEMINI_API_BASE}/upload/v1beta/files`, {
+  const uploadVideoDirectlyToGemini = async (file: File) => {
+    const sessionResponse = await fetch("/api/gemini-upload-session", {
       method: "POST",
-      headers: {
-        "x-goog-api-key": apiKey,
-        "X-Goog-Upload-Protocol": "resumable",
-        "X-Goog-Upload-Command": "start",
-        "X-Goog-Upload-Header-Content-Length": String(bytes.byteLength),
-        "X-Goog-Upload-Header-Content-Type": file.type || "video/mp4",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ file: { display_name: file.name } }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || "video/mp4",
+      }),
     });
-    const startData = await start.json().catch(() => ({}));
-    if (!start.ok) {
-      throw new Error(startData?.error?.message || `Gemini upload could not start (HTTP ${start.status}).`);
+    const session = await sessionResponse.json().catch(() => ({}));
+    if (!sessionResponse.ok || !session?.ok || !session?.uploadUrl) {
+      throw new Error(session?.message || `Gemini upload session could not start (HTTP ${sessionResponse.status}).`);
     }
-    const uploadUrl = start.headers.get("x-goog-upload-url");
-    if (!uploadUrl) throw new Error("Gemini did not return a resumable upload URL.");
-    const uploaded = await fetch(uploadUrl, {
+
+    const uploaded = await fetch(session.uploadUrl, {
       method: "POST",
       headers: {
         "X-Goog-Upload-Offset": "0",
         "X-Goog-Upload-Command": "upload, finalize",
         "Content-Type": file.type || "video/mp4",
       },
-      body: bytes,
+      body: file,
     });
     const uploadedData = await uploaded.json().catch(() => ({}));
     if (!uploaded.ok || !uploadedData?.file?.uri) {
@@ -376,20 +371,23 @@ export default function Home() {
 
   const waitForGeminiVideo = async (
     name: string,
-    apiKey: string,
+    _apiKey: string,
     onUpdate: (detail: string, percent: number) => void,
   ) => {
     for (let attempt = 0; attempt < 180; attempt += 1) {
-      const response = await fetch(`${GEMINI_API_BASE}/v1beta/${name}`, {
-        headers: { "x-goog-api-key": apiKey },
+      const response = await fetch("/api/gemini-file-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error?.message || `Gemini could not inspect the uploaded video (HTTP ${response.status}).`);
-      const file = data?.file || data;
-      const state = typeof file?.state === "string" ? file.state : "PROCESSING";
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || `Gemini could not inspect the uploaded video (HTTP ${response.status}).`);
+      }
+      const state = typeof data?.state === "string" ? data.state : "PROCESSING";
       if (state === "ACTIVE") return;
-      if (state === "FAILED") throw new Error(file?.error?.message || "Gemini failed while preparing the uploaded video.");
-      onUpdate(`Gemini is preparing ${file?.displayName || "the video"}…`, Math.min(62, 43 + Math.floor(attempt / 3)));
+      if (state === "FAILED") throw new Error(data?.error || "Gemini failed while preparing the uploaded video.");
+      onUpdate(`Gemini is preparing ${data?.displayName || "the video"}…`, Math.min(62, 43 + Math.floor(attempt / 3)));
       await new Promise((resolve) => window.setTimeout(resolve, 5000));
     }
     throw new Error("Gemini is still preparing the video after 15 minutes. The request was stopped safely.");
@@ -401,43 +399,30 @@ export default function Home() {
     onUpdate: (detail: string, percent: number) => void,
   ): Promise<TranscriptResult> => {
     onUpdate(`Uploading ${file.name} directly to Gemini…`, 40);
-    const uploaded = await uploadVideoDirectlyToGemini(file, apiKey);
+    const uploaded = await uploadVideoDirectlyToGemini(file);
     await waitForGeminiVideo(uploaded.name, apiKey, onUpdate);
-    const prompt = `You are producing an authentic Latvian television transcript for the original file “${file.name}”. Transcribe this video word-for-word in fluent Latvian without polishing, inventing, summarising, or omitting speech. Identify speakers when possible. Put a timestamp relative to the beginning of the video in [HH:MM:SS] format at the beginning of every new phrase, speaker change, or significant pause. Preserve interruptions, laughter, repetitions, and unclear audio as [neskaidrs]. Return only the timecoded transcript. Never fabricate a word.
-
-The following seven applied references are active in this project. They are editorial guardrails only for later analysis; they must not change, polish, replace or hallucinate anything in this factual transcript:
-${buildReferenceBrief(appliedSources)}`;
-    const requestGeneration = async (model: string) => {
-      const response = await fetch(`${GEMINI_API_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-        method: "POST",
-        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ file_data: { mime_type: uploaded.mimeType, file_uri: uploaded.uri } }, { text: prompt }] }],
-        }),
-      });
-      const data = await response.json().catch(() => ({}));
-      return { response, data };
-    };
     onUpdate("Gemini is transcribing the video…", 70);
-    let model = GEMINI_DIRECT_MODEL;
-    let { response, data } = await requestGeneration(model);
-    const detailText = JSON.stringify(data || "").toLocaleLowerCase();
-    const modelUnavailable = response.status === 404 || (detailText.includes("model") && (detailText.includes("not found") || detailText.includes("not supported") || detailText.includes("unavailable")));
-    if (!response.ok && modelUnavailable) {
-      model = GEMINI_FALLBACK_MODEL;
-      onUpdate("Primary Gemini model unavailable; retrying with the compatible fallback…", 72);
-      ({ response, data } = await requestGeneration(model));
-    }
-    if (!response.ok) {
-      throw new Error(data?.error?.message || `Gemini transcription failed (HTTP ${response.status}).`);
-    }
-    const transcript = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("\n").trim();
-    if (!transcript) throw new Error("Gemini returned no transcript. Try again or use a shorter source file.");
-    if (!/\[?\d{1,2}:\d{2}(?::\d{2})?\]?/.test(transcript)) {
-      throw new Error("Gemini returned text without usable timecodes, so it was not accepted as an editor-ready transcript.");
+    const response = await fetch("/api/transcribe-uploaded", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        uploadedFile: uploaded,
+        originalFile: file.name,
+        model: GEMINI_DIRECT_MODEL,
+        referenceManifest: buildReferenceBrief(appliedSources),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.message || `Gemini transcription failed (HTTP ${response.status}).`);
     }
     onUpdate("Transcript returned and timecodes validated.", 90);
-    return { fileName: file.name, transcript, model, timecodes: true };
+    return {
+      fileName: data.fileName || file.name,
+      transcript: data.transcript,
+      model: data.model || GEMINI_DIRECT_MODEL,
+      timecodes: data.timecodes === true,
+    };
   };
   const chooseFile = () => fileInput.current?.click();
   const onFiles = (files?: FileList | null) => {
@@ -695,14 +680,9 @@ ${buildReferenceBrief(appliedSources)}`;
       );
       return;
     }
-    if (!nativeFfmpeg && !geminiKey.trim()) {
-      setShowSettings(true);
-      setShowGeminiEditor(true);
-      setGeminiMessage(
-        "The native FFmpeg worker is offline. Re-enter the Gemini API key to use the direct browser fallback securely for this run.",
-      );
-      return;
-    }
+    const totalVideoBytes = videoFiles.reduce((total, file) => total + file.size, 0);
+    const nativeProxySafe =
+      nativeFfmpeg && videoFiles.length === 1 && totalVideoBytes <= VERCEL_NATIVE_PROXY_LIMIT;
     setPreferredTool("Gemini 3.6 Flash");
     setProcessing(true);
     setProcessed(false);
@@ -726,15 +706,15 @@ ${buildReferenceBrief(appliedSources)}`;
       let cumulativeStartSeconds = 0;
       for (let index = 0; index < videoFiles.length; index += 1) {
         const file = videoFiles[index];
-        setProcessingStage(nativeFfmpeg ? "splitting" : "uploading");
+        setProcessingStage(nativeProxySafe ? "splitting" : "uploading");
         setProcessingMessage(
-          nativeFfmpeg
+          nativeProxySafe
             ? `Preparing ${file.name} with native FFmpeg…`
             : `Sending ${file.name} directly to Gemini without browser re-encoding…`,
         );
         setProcessingPercent(Math.max(8, Math.round(((index + 1) / videoFiles.length) * 35)));
         setProcessingDetail(
-          nativeFfmpeg
+          nativeProxySafe
             ? `File ${index + 1} of ${videoFiles.length} · native stream-copy path`
             : `File ${index + 1} of ${videoFiles.length} · direct video path${durations[index] > 15 * 60 ? " · long-video mode" : ""}`,
         );
@@ -752,22 +732,22 @@ ${buildReferenceBrief(appliedSources)}`;
       setProcessingStage("uploading");
       setProcessingPercent(40);
       setProcessingDetail(
-        nativeFfmpeg
+        nativeProxySafe
           ? `${segments.length} source file${segments.length === 1 ? "" : "s"} ready · native processor`
           : `${segments.length} source file${segments.length === 1 ? "" : "s"} ready · direct Gemini mode`,
       );
       setProcessingMessage(
-        nativeFfmpeg
+        nativeProxySafe
           ? `Native FFmpeg prepared ${segments.length} source file${segments.length === 1 ? "" : "s"}. Transcribing with overlap and offset restoration…`
           : `Direct Gemini mode is processing ${segments.length} source file${segments.length === 1 ? "" : "s"} without slow browser splitting…`,
       );
       setTranscriptionMessage(
-        nativeFfmpeg
-          ? "Native processor is preparing segments, then Gemini will transcribe and merge them."
+        nativeProxySafe
+          ? "Secure upload is sending the video directly to Gemini, then the system will transcribe, offset, merge and validate it."
           : "The browser is uploading the source directly to Gemini so the hosted app cannot time out.",
       );
       let results: TranscriptResult[] = [];
-      if (nativeFfmpeg) {
+      if (nativeProxySafe) {
         const form = new FormData();
         segments.forEach((segment) =>
           form.append("files", segment.file, segment.file.name),
@@ -838,7 +818,7 @@ ${buildReferenceBrief(appliedSources)}`;
       setProcessingStage("merging");
       setProcessingPercent(90);
       setProcessingDetail(
-        nativeFfmpeg
+        nativeProxySafe
           ? "Merging transcripts, restoring offsets and validating timecodes..."
           : "Validating the direct Gemini transcript and preparing it for editorial review...",
       );
@@ -847,7 +827,7 @@ ${buildReferenceBrief(appliedSources)}`;
       setProcessingPercent(100);
       setProcessingDetail("Transcript returned and validated");
       setProcessingMessage(
-        nativeFfmpeg
+        nativeProxySafe
           ? `Merged and validated ${segments.length} segment${segments.length === 1 ? "" : "s"} with original timeline offsets.`
           : `Gemini returned and validated ${results.length} editor-ready transcript${results.length === 1 ? "" : "s"}.`,
       );
@@ -1962,7 +1942,7 @@ ${buildReferenceBrief(appliedSources)}`;
                   : generatedSegments.length && !processed
                     ? "Segments were prepared and are being submitted in order."
                     : preferredTool
-                      ? "Start runs the complete automatic split, Gemini transcription, offset correction, merge and validation workflow."
+                      ? "Start runs the secure direct upload, Gemini transcription, offset correction, merge and validation workflow."
                       : "Upload a video to begin. The app will not claim transcription completion until a real validated transcript is returned."}
               </p>
               <button

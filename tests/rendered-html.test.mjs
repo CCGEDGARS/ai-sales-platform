@@ -52,3 +52,23 @@ test("production metadata does not advertise a development preview", () => {
 test("Node runtime is pinned to the deployed major version", () => {
   assert.equal(pkg.engines?.node, "24.x");
 });
+
+test("large videos bypass the Vercel payload limit without exposing the saved Gemini key", () => {
+  assert.match(page, /VERCEL_NATIVE_PROXY_LIMIT/);
+  assert.match(page, /fetch\("\/api\/gemini-upload-session"/);
+  assert.match(page, /fetch\("\/api\/gemini-file-status"/);
+  assert.match(page, /fetch\("\/api\/transcribe-uploaded"/);
+  assert.match(page, /nativeProxySafe =\s*nativeFfmpeg\s*&&\s*videoFiles\.length === 1/);
+  assert.equal(fs.existsSync("app/api/gemini-upload-session/route.ts"), true);
+  assert.equal(fs.existsSync("app/api/gemini-file-status/route.ts"), true);
+  assert.equal(fs.existsSync("app/api/transcribe-uploaded/route.ts"), true);
+  const uploadSession = fs.readFileSync("app/api/gemini-upload-session/route.ts", "utf8");
+  const fileStatus = fs.readFileSync("app/api/gemini-file-status/route.ts", "utf8");
+  const uploadedTranscription = fs.readFileSync("app/api/transcribe-uploaded/route.ts", "utf8");
+  assert.match(uploadSession, /getStoredKey\("gemini"\)/);
+  assert.match(fileStatus, /getStoredKey\("gemini"\)/);
+  assert.match(uploadedTranscription, /getStoredKey\("gemini"\)/);
+  const secureDirectFunction = page.match(/const transcribeVideoDirectly = async \([\s\S]*?\n  \};/)?.[0] || "";
+  assert.doesNotMatch(secureDirectFunction, /x-goog-api-key/);
+});
+

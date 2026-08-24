@@ -1,0 +1,46 @@
+name: Fix DANA multi-file timeline
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-dana-multifile.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply multi-file repair
+        run: python scripts/fix-dana-multifile.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and run regression checks
+        run: npm test
+
+      - name: Commit verified fixes
+        run: |
+          if git diff --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx tests/rendered-html.test.mjs
+          git commit -m "Fix multi-file timecode continuity and SRT export"
+          git push origin HEAD:main

@@ -182,7 +182,7 @@ function attemptMessage(attempt: Attempt, label: string) {
   const status = attempt.response?.status || 0;
   return (
     attempt.data.error?.message ||
-    attempt.incomplete_details?.reason ||
+    attempt.data.incomplete_details?.reason ||
     `${label} failed${status ? ` (HTTP ${status})` : ""}.`
   );
 }

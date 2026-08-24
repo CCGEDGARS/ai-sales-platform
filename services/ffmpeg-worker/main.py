@@ -5,15 +5,26 @@ import shutil
 import subprocess
 import tempfile
 import asyncio
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-app = FastAPI(title="DANA AI Native FFmpeg Worker", version="1.0.0")
+app = FastAPI(title="DANA AI Native FFmpeg Worker", version="1.2.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://dana-studio-jet.vercel.app"],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 GEMINI_BASE = "https://generativelanguage.googleapis.com"
+UPLOAD_TICKETS: dict[str, dict] = {}
+UPLOAD_TICKET_TTL_SECONDS = 15 * 60
 
 
 @app.get("/health")
@@ -22,10 +33,45 @@ def health():
     ffprobe = shutil.which("ffprobe")
     return {
         "ok": bool(ffmpeg and ffprobe),
-        "version": "native-ffmpeg-1.1",
+        "version": "native-ffmpeg-1.2-upload-proxy",
         "ffmpeg": bool(ffmpeg),
         "ffprobe": bool(ffprobe),
     }
+
+
+def cleanup_upload_tickets():
+    now = time.time()
+    expired = [
+        token
+        for token, ticket in UPLOAD_TICKETS.items()
+        if now - float(ticket.get("created", now)) > UPLOAD_TICKET_TTL_SECONDS
+    ]
+    for token in expired:
+        UPLOAD_TICKETS.pop(token, None)
+
+
+@app.post("/upload-proxy/authorize")
+async def authorize_upload_proxy(payload: dict):
+    cleanup_upload_tickets()
+    token = str(payload.get("token") or "").strip()
+    api_key = str(payload.get("geminiApiKey") or "").strip()
+    file_name = Path(str(payload.get("fileName") or "source.mp4")).name
+    file_size = int(payload.get("fileSize") or 0)
+    mime_type = str(payload.get("mimeType") or "video/mp4")
+    if not token or not re.fullmatch(r"[0-9a-fA-F-]{20,64}", token):
+        return JSONResponse({"ok": False, "message": "Invalid upload token."}, status_code=400)
+    if not api_key:
+        return JSONResponse({"ok": False, "message": "Gemini API key is missing."}, status_code=400)
+    if file_size <= 0 or file_size > 2_000_000_000:
+        return JSONResponse({"ok": False, "message": "Invalid or unsupported source size."}, status_code=400)
+    UPLOAD_TICKETS[token] = {
+        "created": time.time(),
+        "geminiApiKey": api_key,
+        "fileName": file_name,
+        "fileSize": file_size,
+        "mimeType": mime_type,
+    }
+    return {"ok": True}
 
 
 def run(command: list[str]) -> str:
@@ -74,17 +120,86 @@ def merge(items: list[tuple[str, float]]) -> str:
     return "\n".join(lines)
 
 
-async def gemini_upload(path: Path, api_key: str):
-    data = path.read_bytes()
-    async with httpx.AsyncClient(timeout=300) as client:
-        start = await client.post(f"{GEMINI_BASE}/upload/v1beta/files", headers={"x-goog-api-key": api_key, "X-Goog-Upload-Protocol": "resumable", "X-Goog-Upload-Command": "start", "X-Goog-Upload-Header-Content-Length": str(len(data)), "X-Goog-Upload-Header-Content-Type": "video/mp4", "Content-Type": "application/json"}, json={"file": {"display_name": path.name}})
+async def stream_path(path: Path):
+    with path.open("rb") as handle:
+        while True:
+            chunk = await asyncio.to_thread(handle.read, 1024 * 1024)
+            if not chunk:
+                break
+            yield chunk
+
+
+async def gemini_upload(path: Path, api_key: str, mime_type: str = "video/mp4", display_name: str | None = None):
+    file_size = path.stat().st_size
+    timeout = httpx.Timeout(900.0, connect=30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        start = await client.post(
+            f"{GEMINI_BASE}/upload/v1beta/files",
+            headers={
+                "x-goog-api-key": api_key,
+                "X-Goog-Upload-Protocol": "resumable",
+                "X-Goog-Upload-Command": "start",
+                "X-Goog-Upload-Header-Content-Length": str(file_size),
+                "X-Goog-Upload-Header-Content-Type": mime_type,
+                "Content-Type": "application/json",
+            },
+            json={"file": {"display_name": display_name or path.name}},
+        )
         start.raise_for_status()
         upload_url = start.headers.get("x-goog-upload-url")
         if not upload_url:
             raise RuntimeError("Gemini did not return an upload URL")
-        uploaded = await client.post(upload_url, headers={"Content-Length": str(len(data)), "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize", "Content-Type": "video/mp4"}, content=data)
+        uploaded = await client.post(
+            upload_url,
+            headers={
+                "Content-Length": str(file_size),
+                "X-Goog-Upload-Offset": "0",
+                "X-Goog-Upload-Command": "upload, finalize",
+                "Content-Type": mime_type,
+            },
+            content=stream_path(path),
+        )
         uploaded.raise_for_status()
-        return uploaded.json()["file"]
+        payload = uploaded.json()
+        if not payload.get("file", {}).get("uri"):
+            raise RuntimeError("Gemini accepted the upload but returned no file URI")
+        return payload["file"]
+
+
+@app.post("/upload-proxy/{token}")
+async def upload_proxy(token: str, request: Request):
+    cleanup_upload_tickets()
+    ticket = UPLOAD_TICKETS.get(token)
+    if not ticket:
+        return JSONResponse({"ok": False, "message": "Upload session expired or was not authorized."}, status_code=404)
+    root = Path(tempfile.mkdtemp(prefix="dana-upload-proxy-"))
+    source = root / ticket["fileName"]
+    written = 0
+    try:
+        with source.open("wb") as handle:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                handle.write(chunk)
+                written += len(chunk)
+        expected = int(ticket["fileSize"])
+        if written != expected:
+            raise RuntimeError(f"Upload size mismatch: expected {expected} bytes, received {written}.")
+        file_data = await gemini_upload(
+            source,
+            ticket["geminiApiKey"],
+            ticket["mimeType"],
+            ticket["fileName"],
+        )
+        return {"file": file_data}
+    except httpx.HTTPStatusError as error:
+        detail = error.response.text[-1200:] if error.response is not None else str(error)
+        return JSONResponse({"ok": False, "message": f"Gemini upload failed: {detail}"}, status_code=502)
+    except Exception as error:
+        return JSONResponse({"ok": False, "message": str(error)}, status_code=502)
+    finally:
+        UPLOAD_TICKETS.pop(token, None)
+        shutil.rmtree(root, ignore_errors=True)
 
 
 async def gemini_transcribe(file_data: dict, api_key: str, model: str, original: str, reference_manifest: str):
@@ -153,8 +268,6 @@ async def process(files: list[UploadFile] = File(...), geminiApiKey: str = Form(
                 run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(start), "-i", str(source), "-t", str(length), "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", str(segment)])
                 prepared.append(Segment(segment, start, source.name))
 
-        # Upload/transcribe a small bounded batch concurrently. This keeps the
-        # fast FFmpeg stage fast without creating an unbounded Gemini burst.
         semaphore = asyncio.Semaphore(3)
 
         async def bounded(segment: Segment):

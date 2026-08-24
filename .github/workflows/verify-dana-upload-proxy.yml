@@ -32,3 +32,5 @@ jobs:
         run: npm run build
       - name: Audit production runtime
         run: npm audit --omit=dev --audit-level=high
+
+# Verification trigger after workflow registration.

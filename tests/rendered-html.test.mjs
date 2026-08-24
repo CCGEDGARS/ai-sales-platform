@@ -9,12 +9,14 @@ const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 
 test("saved API connections are restored from server health", () => {
   assert.match(page, /fetch\("\/api\/system-health"/);
-  assert.match(page, /setGeminiStatus\(geminiConnected \? "Connected"/);
-  assert.match(page, /setOpenAIStatus\(openAIConnected \? "Connected"/);
+  assert.match(page, /const geminiConnected\s*=/);
+  assert.match(page, /setGeminiStatus\([\s\S]*?geminiConnected[\s\S]*?"Connected"/);
+  assert.match(page, /setOpenAIStatus\([\s\S]*?openAIConnected[\s\S]*?"Connected"/);
 });
 
 test("voice-over can use a restored OpenAI cookie without exposing the key", () => {
-  assert.match(page, /if \(openAIStatus !== "Connected"\)/);
+  const voiceoverFunction = page.match(/const generateVoiceover = async \(\) => \{[\s\S]*?\n  \};/)?.[0] || "";
+  assert.match(voiceoverFunction, /if \(openAIStatus !== "Connected"\)/);
   assert.match(transcribe, /getStoredKey\("gemini"\)/);
 });
 

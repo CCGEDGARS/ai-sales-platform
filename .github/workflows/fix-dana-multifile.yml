@@ -44,3 +44,5 @@ jobs:
           git add app/page.tsx tests/rendered-html.test.mjs
           git commit -m "Fix multi-file timecode continuity and SRT export"
           git push origin HEAD:main
+
+# rerun from latest main after the read-only audit commit

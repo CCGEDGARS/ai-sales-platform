@@ -32,6 +32,19 @@ test("PDF export uses a browser print document so Latvian text and multipage out
   assert.doesNotMatch(page, /PDFDocument\.create\(/);
 });
 
+test("multi-file video parts retain one cumulative episode timeline", () => {
+  assert.match(page, /let cumulativeStartSeconds = 0/);
+  assert.match(page, /startSeconds: cumulativeStartSeconds/);
+  assert.match(page, /cumulativeStartSeconds \+= durations\[index\] \|\| 0/);
+  assert.match(page, /localSeconds \+ segment\.startSeconds/);
+});
+
+test("SRT export includes every transcript result rather than only the first file", () => {
+  assert.match(page, /transcriptResults\.flatMap\(\(result\) =>/);
+  assert.doesNotMatch(page, /transcriptResults\[0\]\.transcript/);
+  assert.match(page, /Math\.max\(start \+ 1, nextSeconds\)/);
+});
+
 test("production metadata does not advertise a development preview", () => {
   assert.doesNotMatch(layout, /codex-preview/);
 });

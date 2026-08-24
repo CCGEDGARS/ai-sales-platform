@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Document, Packer, Paragraph, TextRun } from "docx";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { createFile as createMp4File } from "mp4box";
 import "./progress.css";
 import "./modules.css";
@@ -264,10 +263,41 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [processing, processingStartedAt]);
   useEffect(() => {
-    fetch("/api/engine-status", { cache: "no-store" })
+    let cancelled = false;
+    fetch("/api/system-health", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data) => setNativeFfmpeg(Boolean(data?.nativeFfmpeg)))
-      .catch(() => setNativeFfmpeg(false));
+      .then((data) => {
+        if (cancelled) return;
+        const geminiConnected =
+          data?.gemini?.configured === true && data?.gemini?.signal === "healthy";
+        const openAIConnected =
+          data?.openai?.configured === true && data?.openai?.signal === "healthy";
+        setGeminiStatus(
+          geminiConnected
+            ? "Connected"
+            : data?.gemini?.signal === "problem"
+              ? "Connection failed"
+              : "Not configured",
+        );
+        setOpenAIStatus(
+          openAIConnected
+            ? "Connected"
+            : data?.openai?.signal === "problem"
+              ? "Connection failed"
+              : "Not configured",
+        );
+        setNativeFfmpeg(data?.ffmpeg?.signal === "healthy");
+        if (geminiConnected)
+          setGeminiMessage("Saved Gemini connection restored securely.");
+        if (openAIConnected)
+          setOpenAIMessage("Saved OpenAI connection restored securely.");
+      })
+      .catch(() => {
+        if (!cancelled) setNativeFfmpeg(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   useEffect(() => {
     try {
@@ -665,6 +695,14 @@ ${buildReferenceBrief(appliedSources)}`;
       );
       return;
     }
+    if (!nativeFfmpeg && !geminiKey.trim()) {
+      setShowSettings(true);
+      setShowGeminiEditor(true);
+      setGeminiMessage(
+        "The native FFmpeg worker is offline. Re-enter the Gemini API key to use the direct browser fallback securely for this run.",
+      );
+      return;
+    }
     setPreferredTool("Gemini 3.6 Flash");
     setProcessing(true);
     setProcessed(false);
@@ -844,12 +882,28 @@ ${buildReferenceBrief(appliedSources)}`;
       );
     }
   };
-  const testOpenAIConnection = () => {
-    if (!openAIKey.trim()) {
-      setOpenAIMessage("Add an OpenAI API key first.");
-      return;
+  const testOpenAIConnection = async () => {
+    setOpenAIStatus("Saving and testing…");
+    setOpenAIMessage("Testing the saved OpenAI connection.");
+    try {
+      const response = await fetch("/api/openai-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: openAIKey.trim() }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok)
+        throw new Error(result.message || "OpenAI connection failed.");
+      setOpenAIStatus("Connected");
+      setOpenAIMessage(`Connection verified successfully to ${result.model}.`);
+    } catch (error) {
+      setOpenAIStatus("Connection failed");
+      setOpenAIMessage(
+        error instanceof Error
+          ? `Connection failed: ${error.message}`
+          : "Connection failed.",
+      );
     }
-    void saveOpenAIKey();
   };
   const saveGeminiKey = async () => {
     if (!geminiKey.trim()) {
@@ -858,7 +912,7 @@ ${buildReferenceBrief(appliedSources)}`;
     }
     setGeminiStatus("Saving and testing…");
     setGeminiMessage(
-      "Testing the live Gemini connection. The key is used only for this session and is not persisted by this app.",
+      "Testing the live Gemini connection. After validation, the key is stored securely in an HTTP-only cookie on this device for up to 180 days.",
     );
     try {
       const response = await fetch("/api/gemini-test", {
@@ -885,22 +939,72 @@ ${buildReferenceBrief(appliedSources)}`;
       );
     }
   };
-  const testGeminiConnection = () => {
-    if (!geminiKey.trim()) {
-      setGeminiMessage("Add and save a Gemini API key first.");
-      return;
+  const testGeminiConnection = async () => {
+    setGeminiStatus("Saving and testing…");
+    setGeminiMessage("Testing the saved Gemini connection.");
+    try {
+      const response = await fetch("/api/gemini-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: geminiKey.trim(),
+          model: GEMINI_DIRECT_MODEL,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok)
+        throw new Error(result.message || "Gemini connection failed.");
+      setGeminiStatus("Connected");
+      setGeminiMessage(`Connection verified successfully to ${result.model}.`);
+    } catch (error) {
+      setGeminiStatus("Connection failed");
+      setGeminiMessage(
+        error instanceof Error
+          ? `Connection failed: ${error.message}`
+          : "Connection failed.",
+      );
     }
-    void saveGeminiKey();
   };
   const refreshStatus = async () => {
     setRefreshing(true);
     setExportMessage("");
-    if (geminiKey.trim()) await saveGeminiKey();
-    else
-      setGeminiMessage(
-        "Status refreshed. Add a Gemini API key in Configure to test the live connection.",
+    try {
+      const response = await fetch("/api/system-health", { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error("System health check failed.");
+      const geminiConnected =
+        data?.gemini?.configured === true && data?.gemini?.signal === "healthy";
+      const openAIConnected =
+        data?.openai?.configured === true && data?.openai?.signal === "healthy";
+      setGeminiStatus(
+        geminiConnected
+          ? "Connected"
+          : data?.gemini?.signal === "problem"
+            ? "Connection failed"
+            : "Not configured",
       );
-    window.setTimeout(() => setRefreshing(false), 450);
+      setOpenAIStatus(
+        openAIConnected
+          ? "Connected"
+          : data?.openai?.signal === "problem"
+            ? "Connection failed"
+            : "Not configured",
+      );
+      setNativeFfmpeg(data?.ffmpeg?.signal === "healthy");
+      setGeminiMessage(data?.gemini?.message || "Gemini status refreshed.");
+      setOpenAIMessage(data?.openai?.message || "OpenAI status refreshed.");
+      setExportMessage(
+        data?.ffmpeg?.signal === "healthy"
+          ? "System status refreshed. Native FFmpeg is online."
+          : data?.ffmpeg?.message || "System status refreshed.",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : "System status refresh failed.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
   };
   const generateVoiceover = async () => {
     if (!processed || !transcriptResults.length) {
@@ -910,7 +1014,7 @@ ${buildReferenceBrief(appliedSources)}`;
       );
       return;
     }
-    if (!openAIKey.trim()) {
+    if (openAIStatus !== "Connected") {
       setShowSettings(true);
       setShowOpenAIEditor(true);
       setVoiceoverStatus("failed");
@@ -1161,39 +1265,31 @@ ${buildReferenceBrief(appliedSources)}`;
       );
       return;
     }
-    const pdf = await PDFDocument.create();
-    const page = pdf.addPage();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const lines = [
-      "DANA AI PRODUCTION STUDIO",
-      fileName || "GIV production workspace",
-      `Exported: ${new Date().toLocaleString("lv-LV")}`,
-      `Gemini status: ${geminiStatus}`,
-      `Processing chunk: ${chunkLength} minutes`,
-      uploaded
-        ? processed
-          ? "Transcript returned and ready for review."
-          : "Video is queued for transcription."
-        : "No video has been uploaded yet.",
-      ...transcriptText.split("\n"),
-    ];
-    lines.forEach((line, index) =>
-      page.drawText(line, {
-        x: 48,
-        y: 760 - index * 30,
-        size: index === 0 ? 18 : 12,
-        font,
-        color: rgb(0.09, 0.16, 0.13),
-      }),
-    );
-    const pdfBytes = await pdf.save();
-    const pdfArrayBuffer = new ArrayBuffer(pdfBytes.byteLength);
-    new Uint8Array(pdfArrayBuffer).set(pdfBytes);
-    downloadBlob(
-      new Blob([pdfArrayBuffer], { type: "application/pdf" }),
-      "dana-ai-production-export.pdf",
-    );
-    setExportMessage("PDF downloaded successfully.");
+    const escapeHtml = (value: string) =>
+      value.replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;",
+        };
+        return entities[character] || character;
+      });
+    const popup = window.open("", "_blank");
+    if (!popup) {
+      setExportMessage(
+        "PDF export was blocked by the browser. Allow pop-ups for this site and try again.",
+      );
+      return;
+    }
+    popup.opener = null;
+    const title = fileName || "GIV production workspace";
+    popup.document.write(`<!doctype html><html lang="lv"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{margin:18mm}body{font-family:Arial,Helvetica,sans-serif;color:#17221d;line-height:1.45}h1{font-size:20px;margin:0 0 6px}p{font-size:11px;color:#4b5a52}pre{font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap;word-break:break-word;font-size:11px;margin-top:20px}</style></head><body><h1>DANA AI PRODUCTION STUDIO</h1><p>${escapeHtml(title)} · Exported ${escapeHtml(new Date().toLocaleString("lv-LV"))}</p><pre>${escapeHtml(transcriptText)}</pre></body></html>`);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(() => popup.print(), 250);
+    setExportMessage('PDF print view opened. Choose “Save as PDF” in the browser print dialog.');
   };
 
   const navigateTo = (item: string) => {
@@ -1412,6 +1508,14 @@ ${buildReferenceBrief(appliedSources)}`;
               <div
                 className={uploaded ? "dropzone uploaded" : "dropzone"}
                 onClick={chooseFile}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "copy";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  onFiles(e.dataTransfer.files);
+                }}
               >
                 <div className="upload-icon">{uploaded ? "✓" : "↑"}</div>
                 <b>
@@ -2002,7 +2106,7 @@ ${buildReferenceBrief(appliedSources)}`;
             </div>
             <p className="drawer-intro">
               Add, remove or change the services used by the production
-              pipeline. Keys are never displayed after saving.
+              pipeline. Keys are stored in secure HTTP-only cookies for up to 180 days on this device and are never displayed after saving.
             </p>
             <div className="setting-card">
               <span className="tool-logo gemini">✦</span>
@@ -2177,8 +2281,13 @@ ${buildReferenceBrief(appliedSources)}`;
                 <option value="15">15 minutes</option>
               </select>
             </div>
-            <button type="button" className="outline-btn">
-              ＋ Add another integration
+            <button
+              type="button"
+              className="outline-btn"
+              disabled
+              title="Gemini, native FFmpeg and OpenAI are the supported production integrations in this version."
+            >
+              Supported integrations are already configured
             </button>
           </div>
         )}
@@ -2271,7 +2380,7 @@ ${buildReferenceBrief(appliedSources)}`;
               onChange={(e) => setVoiceoverSearch(e.target.value)}
               placeholder="Search scripts, projects or scenes…"
             />
-            <span>Session-only prototype archive</span>
+            <span>Device-local production archive</span>
           </div>
           {voiceovers.length === 0 && (
             <div className="empty-library">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getStoredKey } from "../../lib/credentials";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
 // Current stable multimodal model. Keep this in one place so the connection
@@ -120,7 +121,8 @@ async function transcribeWithModel(
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
-    const apiKey = String(form.get("apiKey") || "").trim();
+    const submittedKey = String(form.get("apiKey") || "").trim();
+    const apiKey = submittedKey || await getStoredKey("gemini");
     const requestedModel = String(form.get("model") || DEFAULT_MODEL);
     const files = form.getAll("files").filter((value): value is File => value instanceof File && value.size > 0);
     const processor = String(form.get("processor") || "browser");

@@ -72,3 +72,13 @@ test("large videos bypass the Vercel payload limit without exposing the saved Ge
   assert.doesNotMatch(secureDirectFunction, /x-goog-api-key/);
 });
 
+test("large video bytes go through the controlled native upload proxy instead of a Google browser upload URL", () => {
+  const uploadSession = fs.readFileSync("app/api/gemini-upload-session/route.ts", "utf8");
+  const worker = fs.readFileSync("services/ffmpeg-worker/main.py", "utf8");
+  assert.match(uploadSession, /\/upload-proxy\/authorize/);
+  assert.match(uploadSession, /\/upload-proxy\/\$\{encodeURIComponent\(token\)\}/);
+  assert.match(worker, /CORSMiddleware/);
+  assert.match(worker, /@app\.post\("\/upload-proxy\/authorize"\)/);
+  assert.match(worker, /@app\.post\("\/upload-proxy\/\{token\}"\)/);
+  assert.match(worker, /async for chunk in request\.stream\(\)/);
+});

@@ -90,6 +90,6 @@ test("voice-over generation automatically recovers when reasoning consumes the v
   assert.match(voiceoverRoute, /reasoning_tokens/);
   assert.match(voiceoverRoute, /retryVisibleText/);
   assert.match(voiceoverRoute, /effort: "high"/);
-  assert.match(voiceoverRoute, /max_output_tokens: 24000/);
+  assert.match(voiceoverRoute, /maxOutputTokens: 24000/);
   assert.match(voiceoverRoute, /flatMap\(\(item\) => item\.content \|\| \[\]\)/);
 });

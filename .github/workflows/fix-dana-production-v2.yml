@@ -47,3 +47,5 @@ jobs:
           git add app/page.tsx app/api/transcribe/route.ts app/layout.tsx package.json package-lock.json tests/rendered-html.test.mjs
           git commit -m "Fix DANA production persistence, drag-drop and PDF export"
           git push origin HEAD:main
+
+# rerun: regression assertion corrected

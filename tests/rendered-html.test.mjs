@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const page = fs.readFileSync("app/page.tsx", "utf8");
 const transcribe = fs.readFileSync("app/api/transcribe/route.ts", "utf8");
+const voiceoverRoute = fs.readFileSync("app/api/generate-voiceover/route.ts", "utf8");
 const layout = fs.readFileSync("app/layout.tsx", "utf8");
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 
@@ -81,4 +82,14 @@ test("large video bytes go through the controlled native upload proxy instead of
   assert.match(worker, /@app\.post\("\/upload-proxy\/authorize"\)/);
   assert.match(worker, /@app\.post\("\/upload-proxy\/\{token\}"\)/);
   assert.match(worker, /async for chunk in request\.stream\(\)/);
+});
+
+test("voice-over generation automatically recovers when reasoning consumes the visible-output budget", () => {
+  assert.match(voiceoverRoute, /incomplete_details/);
+  assert.match(voiceoverRoute, /status\?: string/);
+  assert.match(voiceoverRoute, /reasoning_tokens/);
+  assert.match(voiceoverRoute, /retryVisibleText/);
+  assert.match(voiceoverRoute, /effort: "high"/);
+  assert.match(voiceoverRoute, /max_output_tokens: 24000/);
+  assert.match(voiceoverRoute, /flatMap\(\(item\) => item\.content \|\| \[\]\)/);
 });

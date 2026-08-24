@@ -1,7 +1,8 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com";
+const NATIVE_FFMPEG_WORKER = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
 const MAX_VIDEO_BYTES = 2_000_000_000;
 
 export async function POST(request: Request) {
@@ -29,39 +30,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, message: "This source file is larger than the supported 2 GB upload limit." }, { status: 413 });
     }
 
-    const start = await fetch(`${GEMINI_BASE}/upload/v1beta/files`, {
+    const token = crypto.randomUUID();
+    const authorize = await fetch(`${NATIVE_FFMPEG_WORKER}/upload-proxy/authorize`, {
       method: "POST",
-      headers: {
-        "x-goog-api-key": apiKey,
-        "X-Goog-Upload-Protocol": "resumable",
-        "X-Goog-Upload-Command": "start",
-        "X-Goog-Upload-Header-Content-Length": String(fileSize),
-        "X-Goog-Upload-Header-Content-Type": mimeType,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ file: { display_name: fileName } }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token,
+        geminiApiKey: apiKey,
+        fileName,
+        fileSize,
+        mimeType,
+      }),
       cache: "no-store",
     });
-
-    const data = await start.json().catch(() => ({}));
-    if (!start.ok) {
+    const authorizeData = await authorize.json().catch(() => ({}));
+    if (!authorize.ok || !authorizeData?.ok) {
       return NextResponse.json(
-        { ok: false, message: data?.error?.message || `Gemini upload session could not start (HTTP ${start.status}).` },
+        {
+          ok: false,
+          message:
+            authorizeData?.message ||
+            `The native upload proxy could not start (HTTP ${authorize.status}).`,
+        },
         { status: 502 },
       );
     }
 
-    const uploadUrl = start.headers.get("x-goog-upload-url");
-    if (!uploadUrl) {
-      return NextResponse.json({ ok: false, message: "Gemini did not return a resumable upload URL." }, { status: 502 });
-    }
-
+    const uploadUrl = `${NATIVE_FFMPEG_WORKER}/upload-proxy/${encodeURIComponent(token)}`;
     const result = NextResponse.json({ ok: true, uploadUrl });
     result.headers.set("Cache-Control", "no-store, max-age=0");
     return result;
   } catch (error) {
     return NextResponse.json(
-      { ok: false, message: error instanceof Error ? error.message : "The Gemini upload session could not be created." },
+      {
+        ok: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "The secure upload proxy could not be created.",
+      },
       { status: 502 },
     );
   }

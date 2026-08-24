@@ -84,12 +84,16 @@ test("large video bytes go through the controlled native upload proxy instead of
   assert.match(worker, /async for chunk in request\.stream\(\)/);
 });
 
-test("voice-over generation automatically recovers when reasoning consumes the visible-output budget", () => {
-  assert.match(voiceoverRoute, /incomplete_details/);
-  assert.match(voiceoverRoute, /status\?: string/);
-  assert.match(voiceoverRoute, /reasoning_tokens/);
-  assert.match(voiceoverRoute, /retryVisibleText/);
-  assert.match(voiceoverRoute, /effort: "high"/);
-  assert.match(voiceoverRoute, /maxOutputTokens: 24000/);
-  assert.match(voiceoverRoute, /flatMap\(\(item\) => item\.content \|\| \[\]\)/);
+test("voice-over generation is latency-bounded and has a fast model fallback", () => {
+  assert.match(voiceoverRoute, /export const maxDuration = 120/);
+  assert.match(voiceoverRoute, /PRIMARY_VOICEOVER_MODEL = "gpt-5\.6-sol"/);
+  assert.match(voiceoverRoute, /FALLBACK_VOICEOVER_MODEL = "gpt-5\.6-terra"/);
+  assert.match(voiceoverRoute, /AbortController/);
+  assert.match(voiceoverRoute, /OPENAI_CALL_TIMEOUT_MS = 45_000/);
+  assert.match(voiceoverRoute, /effort: "low"/);
+  assert.doesNotMatch(voiceoverRoute, /mode: "pro"/);
+  assert.doesNotMatch(voiceoverRoute, /effort: "max"/);
+  assert.match(voiceoverRoute, /responseText/);
+  assert.match(voiceoverRoute, /ratioMetrics/);
+  assert.match(voiceoverRoute, /rewriteCount/);
 });

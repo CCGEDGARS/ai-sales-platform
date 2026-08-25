@@ -15,7 +15,7 @@ const FALLBACK_VOICEOVER_MODEL = "gpt-5.6-terra";
 const LEGACY_VOICEOVER_MODEL = "gpt-5.6-terra";
 const DEFAULT_TONE = "Lepers Standard · premium observational comedy";
 const TAILORED_TONE = "Tailored · custom editorial direction";
-const MAX_BACKGROUND_CORRECTIONS = 3;
+const MAX_BACKGROUND_CORRECTIONS = 5;
 
 const RATIO_REFERENCE_SOURCES = [
   "Come Dine With Me.mp4",
@@ -494,6 +494,44 @@ async function createBackgroundResponse({
   return { response, data };
 }
 
+
+async function createCorrectionResponse({
+  apiKey,
+  system,
+  user,
+  metadata,
+  previousResponseId,
+}: {
+  apiKey: string;
+  system: string;
+  user: string;
+  metadata: Record<string, string>;
+  previousResponseId: string;
+}) {
+  const configuredCorrectionModel = process.env.OPENAI_VOICEOVER_MODEL || PRIMARY_VOICEOVER_MODEL;
+  let model = configuredCorrectionModel;
+  let created = await createBackgroundResponse({
+    apiKey,
+    model,
+    system,
+    user,
+    metadata,
+    previousResponseId,
+  });
+  if (!created.response.ok && modelUnavailable(created.response, created.data) && model !== FALLBACK_VOICEOVER_MODEL) {
+    model = FALLBACK_VOICEOVER_MODEL;
+    created = await createBackgroundResponse({
+      apiKey,
+      model,
+      system,
+      user,
+      metadata,
+      previousResponseId,
+    });
+  }
+  return { ...created, model };
+}
+
 async function createLegacyResponse({
   apiKey,
   system,
@@ -541,6 +579,41 @@ async function createLegacyResponse({
 
 function providerError(data: OpenAIResponseData, fallback: string) {
   return data.error?.message || data.incomplete_details?.reason || fallback;
+}
+
+
+function goldenMasterRepairInstructions(goldenMaster: ReturnType<typeof scoreLepersGoldenMaster> | null) {
+  if (!goldenMaster) return "No Golden Master repair map is required for this tone.";
+  const d = goldenMaster.dimensions;
+  const repairs: string[] = [];
+  if (d.structure < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.structure) {
+    repairs.push("STRUCTURE: restore every required section in exact order and all five canonical table schemas; do not rename headings or columns.");
+  }
+  if (d.depth < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.depth) {
+    repairs.push("DEPTH: reach the reference-level deterministic target with about 1400+ analytical words outside VO MASTER, at least 10 edit rows, and at least 4 risk rows. Add only source-grounded analysis; never invent facts.");
+  }
+  if (d.voAmount < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.voAmount) {
+    repairs.push("VO AMOUNT: keep only GALA VO TEKSTS spoken words inside the locked 16.17%–17.17% runtime band without recap or padding.");
+  }
+  if (d.humourAndPov < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.humourAndPov) {
+    repairs.push("HUMOUR + POV: strengthen Fifth Dinner Guest opinion, contradiction, internal dialogue, viewer-thought questions and callbacks in legitimate VO beats; remove passive reactions and generic description.");
+  }
+  if (d.pace < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.pace) {
+    repairs.push("PACE: keep VO cues concise, preferably 8–45 words, average roughly 12–35 words, and never exceed 55 words per cue.");
+  }
+  if (d.productionUsefulness < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.productionUsefulness) {
+    repairs.push("PRODUCTION USEFULNESS: restore explicit KEEP, TIGHTEN, REMOVE and VERIFY decisions plus concrete Montāžas ritms, Skaņas un mūzikas akcenti, Grafikas and B-roll guidance where supported.");
+  }
+  if (d.promo < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.promo) {
+    repairs.push("PROMO: provide 5 teaser beats, a 30 sekunžu promo VO, a 15 sekunžu promo VO, and 4 social hooks, all grounded in the current episode.");
+  }
+  if (d.characterInsight < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.characterInsight) {
+    repairs.push("CHARACTER: restore EP LĒMUMS, Epizodes caurviju motīvs, Raksturu funkcijas montāžā, Kas strādā and Kas bremzē with specific source-grounded judgement.");
+  }
+  if (d.formatting < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.formatting) {
+    repairs.push("FORMATTING: restore exact Golden Master headings, canonical table columns and Galīgā producenta rekomendācija formatting.");
+  }
+  return repairs.length ? repairs.join("\n") : "All deterministic Golden Master dimensions are already at target; preserve them exactly.";
 }
 
 export async function POST(request: Request) {
@@ -737,11 +810,10 @@ export async function GET(request: Request) {
         ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
         : `You are DANA AI's final Latvian television voice-over editor and fifth diner. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} The selected tone must remain clearly recognisable after revision.`;
       const correctionUser = lepersCorrection
-        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Replace generic descriptive VO with opinionated Fifth Dinner Guest narration. Hunt for details the participants miss and exploit running jokes/callbacks when supported. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
+        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Replace generic descriptive VO with opinionated Fifth Dinner Guest narration. Hunt for details the participants miss and exploit running jokes/callbacks when supported. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Current dimension scores: ${JSON.stringify(goldenMaster?.dimensions || {})}. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nPRECISION REPAIR MAP — repair deficient dimensions first and preserve dimensions already at full score:\n${goldenMasterRepairInstructions(goldenMaster)}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
         : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Every cue must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Rewrite generic descriptive VO as active Fifth Dinner Guest narration; hunt for details the participants miss and exploit callbacks when the source supports them. Remove empty “hmm”, “jā”, “traki”, “nu gan” reactions. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
-      const correction = await createBackgroundResponse({
+      const correction = await createCorrectionResponse({
         apiKey,
-        model: FALLBACK_VOICEOVER_MODEL,
         system: correctionSystem,
         user: correctionUser,
         metadata: metadataFor(finalRuntimeSeconds, correctionTone, "correction", correctionAttempt + 1),
@@ -754,7 +826,7 @@ export async function GET(request: Request) {
           responseId: correction.data.id,
           phase: "correction",
           correctionAttempt: correctionAttempt + 1,
-          model: correction.data.model || FALLBACK_VOICEOVER_MODEL,
+          model: correction.data.model || correction.model,
           tone: correctionTone,
           requestId,
         });

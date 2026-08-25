@@ -2,6 +2,7 @@ import { LEPERS_REQUIRED_SECTIONS } from "./lepers-standard";
 
 export const LEPERS_GOLDEN_MASTER_NAME = "Lepers Golden Master · locked 10/10 benchmark";
 export const LEPERS_GOLDEN_MASTER_THRESHOLD = 95;
+export const CREATIVE_FRESHNESS_THRESHOLD = 80;
 
 export const LEPERS_GOLDEN_MASTER_FINGERPRINT = {
   source: "RIHARDS_LEPERS_Production_Analysis_and_VO.docx",
@@ -53,6 +54,20 @@ export type LepersGoldenMasterScore = {
     developed: boolean;
     signals: number;
     passes: boolean;
+  };
+  creativeFreshness: {
+    score: number;
+    threshold: number;
+    passes: boolean;
+    dimensions: {
+      originalAngle: number;
+      entertainmentSurprise: number;
+      formatEnhancement: number;
+      provocationTension: number;
+      callbacksEngineering: number;
+      visualCreativity: number;
+    };
+    deficiencies: string[];
   };
   deficiencies: string[];
 };
@@ -108,6 +123,52 @@ function secondStoryMetrics(source: string) {
   return { present, developed, signals, passes: present && developed };
 }
 
+function numberedCount(block: string) {
+  return (String(block || "").match(/(?:^|\n)\s*\d+[.)]\s+/g) || []).length;
+}
+
+function bulletCount(block: string) {
+  return (String(block || "").match(/(?:^|\n)\s*[-*•]\s+/g) || []).length;
+}
+
+function creativeFreshnessMetrics(source: string) {
+  const room = section(source, /CREATIVE ROOM\s*[—-]\s*WOW PASS/i, /OTRĀ STĀSTA LĪNIJA/i);
+  const candidatesBlock = section(room, /OTRĀ STĀSTA KANDIDĀTI/i, /NORAIDĪTIE PAREDZAMIE LEŅĶI/i);
+  const rejectedBlock = section(room, /NORAIDĪTIE PAREDZAMIE LEŅĶI/i, /FORMAT SPICE/i);
+  const spiceBlock = section(room, /FORMAT SPICE/i, /KO MĒS PIEVIENOJAM/i);
+  const candidates = numberedCount(candidatesBlock);
+  const rejected = Math.max(numberedCount(rejectedBlock), bulletCount(rejectedBlock));
+  const spice = numberedCount(spiceBlock);
+  const addition = source.match(/KO MĒS PIEVIENOJAM, KAS NAV JAU GATAVS MATERIĀLĀ\s*[:—-]\**\s*([^\n]{35,})/i);
+  const boldIdea = source.match(/DROSMĪGĀKĀ AIZSTĀVAMĀ IDEJA\s*[:—-]\**\s*([^\n]{35,})/i);
+  const lower = room.toLocaleLowerCase("lv-LV");
+  const surpriseSignals = (lower.match(/\b(negaid|pārsteig|absurd|iron|metafor|provok|spēl|twist|reversal|pretstat|hipotēz|prognoz)\w*/g) || []).length;
+  const formatSignals = (lower.match(/countdown|freeze[- ]?frame|split[- ]?screen|scorecard|contradiction tracker|faux[- ]?serious|skaņas signāl|sound cue|chapter title|nodaļas nosauk|prediction meter|vizuāl\w* motīv|audience question|skatītāja jautājum|grafik|taimer/gi) || []).length;
+  const tensionSignals = (lower.match(/\b(spriedz|provok|jautājum|likm|risks|sacens|pretstat|konflikt|vs|kas notiks|cik ilgi|vai)\w*/g) || []).length + (room.match(/\?/g) || []).length;
+  const callbackSignals = (lower.match(/callback|running gag|setup|payoff|atcer|atgriež|solīj|prognoz/gi) || []).length;
+  const visualSignals = (spiceBlock.toLocaleLowerCase("lv-LV").match(/freeze|split|kadrs|grafik|vizuāl|skaņ|taimer|pulksten|montāž|reakcij|ekrān|titrs/gi) || []).length;
+
+  const originalAngle = clamp((candidates >= 3 ? 12 : candidates * 4) + (rejected >= 2 ? 5 : rejected * 2) + (addition ? 4 : 0) + (boldIdea ? 4 : 0), 0, 25);
+  const entertainmentSurprise = clamp((boldIdea ? 8 : 0) + Math.min(8, surpriseSignals * 2) + (rejected >= 2 ? 4 : rejected * 2), 0, 20);
+  const formatEnhancement = clamp((spice >= 3 ? 12 : spice * 4) + Math.min(8, formatSignals * 2), 0, 20);
+  const provocationTension = clamp(Math.min(15, tensionSignals * 3), 0, 15);
+  const callbacksEngineering = clamp(Math.min(10, callbackSignals * 3), 0, 10);
+  const visualCreativity = clamp(Math.min(10, visualSignals * 2), 0, 10);
+  const dimensions = { originalAngle, entertainmentSurprise, formatEnhancement, provocationTension, callbacksEngineering, visualCreativity };
+  const score = Object.values(dimensions).reduce((sum, value) => sum + value, 0);
+  const structuralPass = Boolean(room) && candidates >= 3 && rejected >= 2 && spice >= 3 && Boolean(addition) && Boolean(boldIdea);
+  const deficiencies: string[] = [];
+  if (!room) deficiencies.push("Add the mandatory CREATIVE ROOM — WOW PASS before selecting the Second Story.");
+  if (candidates < 3) deficiencies.push("Show 3 materially different Second Story finalists after exploring broader alternatives.");
+  if (rejected < 2) deficiencies.push("Explicitly reject at least 2 predictable, safe or reflection-only angles.");
+  if (spice < 3) deficiencies.push("Add at least 3 FORMAT SPICE devices; at least one must change how the scene is presented, not merely add VO.");
+  if (!addition) deficiencies.push("State KO MĒS PIEVIENOJAM, KAS NAV JAU GATAVS MATERIĀLĀ with concrete new entertainment value.");
+  if (!boldIdea) deficiencies.push("State one DROSMĪGĀKĀ AIZSTĀVAMĀ IDEJA that is bold but source-defensible.");
+  if (formatEnhancement < 14) deficiencies.push("Increase format enhancement with concrete edit, graphic, sound, visual or recurring-game mechanics.");
+  if (entertainmentSurprise < 14) deficiencies.push("Increase surprise, comic premise, reversal, metaphor or unexpected editorial framing.");
+  return { score, threshold: CREATIVE_FRESHNESS_THRESHOLD, passes: structuralPass && score >= CREATIVE_FRESHNESS_THRESHOLD, dimensions, deficiencies };
+}
+
 export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): LepersGoldenMasterScore {
   const source = String(text || "");
   const deficiencies: string[] = [];
@@ -145,10 +206,12 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
   const editorialSignals = (joinedCues.match(/\b(bet|taču|izskatās|tiesa|vai|tomēr|pirms|acīmredzot|laikam|kamēr)\b/g) || []).length;
   const questionSignals = (cues.join(" ").match(/\?/g) || []).length;
   const secondStory = secondStoryMetrics(source);
+  const creativeFreshness = creativeFreshnessMetrics(source);
   const authoredLayer = clamp((editorialSignals + questionSignals * 2 + secondStory.signals) / Math.max(6, cues.length), 0.65, 1);
   const authorshipMultiplier = secondStory.passes ? 1 : 0.45;
   const humourAndPov = emptyReaction ? 0 : Math.round(weights.humourAndPov * authoredLayer * authorshipMultiplier);
   if (!secondStory.passes) deficiencies.push("Create and develop OTRĀ STĀSTA LĪNIJA from verified reality. Reflection-only VO is not enough: add a distinct authored premise and carry it through OTRĀ STĀSTA ATTĪSTĪBA as setup, escalation and payoff/callback without inventing facts.");
+  if (!creativeFreshness.passes) deficiencies.push(`Creative Freshness / WOW ${creativeFreshness.score}/${creativeFreshness.threshold}: ${creativeFreshness.deficiencies.join(" ")}`);
   if (humourAndPov < weights.humourAndPov) deficiencies.push("Strengthen the fifth-diner point of view, comic framing, contradiction and viewer-thought layer; remove passive reactions.");
 
   const cueWordCounts = cues.map(words);
@@ -183,9 +246,10 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
     name: LEPERS_GOLDEN_MASTER_NAME,
     score,
     threshold: LEPERS_GOLDEN_MASTER_THRESHOLD,
-    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes,
+    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes && creativeFreshness.passes,
     dimensions,
     secondStory,
+    creativeFreshness,
     deficiencies,
   };
 }

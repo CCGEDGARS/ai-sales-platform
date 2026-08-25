@@ -88,14 +88,12 @@ test("voice-over generation uses durable OpenAI background jobs instead of one l
   assert.match(voiceoverRoute, /background:\s*true/);
   assert.match(voiceoverRoute, /export async function GET/);
   assert.match(voiceoverRoute, /\/responses\/\$\{encodeURIComponent\(responseId\)\}/);
-  assert.match(voiceoverRoute, /status === "in_progress"|status === "queued"/);
-  assert.match(page, /pollVoiceoverJob/);
-  assert.match(page, /responseId/);
-  assert.match(page, /window\.setTimeout/);
-});
-
-test("validated transcript survives a refresh so a new frontend can resume voice-over generation", () => {
-  assert.match(page, /dana-ai-transcript-session/);
-  assert.match(page, /window\.localStorage\.setItem\([\s\S]*dana-ai-transcript-session/);
-  assert.match(page, /setTranscriptResults\([\s\S]*saved/);
+  assert.match(voiceoverRoute, /data\.status === "queued" \|\| data\.status === "in_progress"/);
+  assert.equal(fs.existsSync("public/voiceover-background.js"), true);
+  const client = fs.readFileSync("public/voiceover-background.js", "utf8");
+  assert.match(layout, /voiceover-background\.js/);
+  assert.match(client, /X-DANA-Voiceover-Mode/);
+  assert.match(client, /responseId/);
+  assert.match(client, /setTimeout/);
+  assert.match(client, /dana-ai-pending-voiceover/);
 });

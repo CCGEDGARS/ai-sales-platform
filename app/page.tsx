@@ -251,6 +251,7 @@ export default function Home() {
   const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
   const segmentInput = useRef<HTMLInputElement>(null);
+  const transcriptImportInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!processing || !processingStartedAt) return;
     const timer = window.setInterval(
@@ -451,6 +452,72 @@ export default function Home() {
       model: data.model || GEMINI_DIRECT_MODEL,
       timecodes: data.timecodes === true,
     };
+  };
+  const inferRuntimeFromTranscript = (value: string) => {
+    const matches = Array.from(
+      value.matchAll(/(?:^|\n)\s*\[?(\d{2}):(\d{2}):(\d{2})\]?/g),
+    );
+    const latest = matches.reduce((max, match) => {
+      const seconds =
+        Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+      return Math.max(max, seconds);
+    }, 0);
+    return latest > 0 ? latest + 2 : 0;
+  };
+  const chooseTranscriptImport = () => transcriptImportInput.current?.click();
+  const onTranscriptImport = async (files?: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setTranscriptionMessage(`Importing ${file.name}…`);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch("/api/import-transcript", {
+        method: "POST",
+        body: form,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok || !data?.transcript) {
+        throw new Error(
+          data?.message || `Transcript import failed (HTTP ${response.status}).`,
+        );
+      }
+      const importedTranscript = String(data.transcript).trim();
+      const runtimeSeconds =
+        Number(data.runtimeSeconds) || inferRuntimeFromTranscript(importedTranscript);
+      if (!runtimeSeconds) {
+        throw new Error(
+          "The imported transcript has no usable HH:MM:SS timecodes, so DANA AI cannot calculate the voice-over ratio.",
+        );
+      }
+      setTranscriptResults([
+        {
+          fileName: data.fileName || file.name,
+          transcript: importedTranscript,
+          model: "Imported validated transcript",
+          timecodes: data.timecodes === true,
+        },
+      ]);
+      setFinalRuntimeSeconds(runtimeSeconds);
+      setFileName(data.fileName || file.name);
+      setProcessed(true);
+      setVoiceoverDraft("");
+      setVoiceoverMetrics(null);
+      setVoiceoverStatus("idle");
+      setVoiceoverMessage("");
+      setTranscriptionMessage(
+        `Imported ${file.name}. Timecoded transcript restored; voice-over is unlocked. Runtime inferred as ${formatElapsed(runtimeSeconds)} from the final timecode.`,
+      );
+      setProjectMessage(
+        "Existing transcript imported successfully. You can proceed directly to Voice-over without retranscribing the video.",
+      );
+    } catch (error) {
+      setTranscriptionMessage(
+        error instanceof Error ? error.message : "Transcript import failed.",
+      );
+    } finally {
+      if (transcriptImportInput.current) transcriptImportInput.current.value = "";
+    }
   };
   const chooseFile = () => fileInput.current?.click();
   const onFiles = (files?: FileList | null) => {
@@ -1495,6 +1562,13 @@ export default function Home() {
           hidden
           onChange={(e) => onSegments(e.target.files)}
         />
+        <input
+          ref={transcriptImportInput}
+          type="file"
+          accept=".txt,.srt,.vtt,.docx"
+          hidden
+          onChange={(e) => void onTranscriptImport(e.target.files)}
+        />
         <header id="workspace-top" className="topbar">
           <div>
             <div className="eyebrow">PROJECT / GIV · SEASON 11</div>
@@ -1844,11 +1918,22 @@ export default function Home() {
                     <button type="button" className="export-btn" onClick={() => void exportDocx()}>
                       Download timecode DOCX
                     </button>
+                    <button type="button" className="export-btn" onClick={chooseTranscriptImport}>
+                      Replace / import transcript
+                    </button>
                   </div>
                 </>
               ) : (
-                <div className="transcript-placeholder">
-                  The validated transcript will appear here after transcription.
+                <div className="transcript-placeholder transcript-import-placeholder">
+                  <b>Already have the transcript?</b>
+                  <span>Import a previously downloaded DANA transcript and continue directly to voice-over. TXT, SRT, VTT and DOCX are supported.</span>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={chooseTranscriptImport}
+                  >
+                    Import existing transcript
+                  </button>
                 </div>
               )}
             </section>

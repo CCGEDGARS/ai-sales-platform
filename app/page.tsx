@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { createFile as createMp4File } from "mp4box";
+import { buildFormattedProductionDocx } from "./lib/formatted-production-docx";
 import "./progress.css";
 import "./modules.css";
 
@@ -1636,20 +1637,26 @@ This also removes it from the active project context.`)) return;
       return;
     }
     const title = fileName || "GIV production workspace";
-    const doc = new Document({
-      sections: [{
-        children: [
-          new Paragraph({ children: [new TextRun({ text: "DANA AI FINAL VOICE-OVER", bold: true, size: 28 })] }),
-          new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 24 })] }),
-          new Paragraph(`Tone: ${voiceoverTone}`),
-          new Paragraph(`Exported: ${new Date().toLocaleString("lv-LV")}`),
-          new Paragraph(voiceoverMetrics ? `Ratio: ${voiceoverMetrics.ratioPercent}% · ${voiceoverMetrics.words} words · ${voiceoverMetrics.spokenSeconds}s spoken` : "Ratio metrics unavailable."),
-          new Paragraph(voiceoverDraft),
-        ],
-      }],
+    const exportedAt = new Date().toLocaleString("lv-LV");
+    const ratioLine = voiceoverMetrics
+      ? `Ratio: ${voiceoverMetrics.ratioPercent}% · ${voiceoverMetrics.words} words · ${voiceoverMetrics.spokenSeconds}s spoken`
+      : "Ratio metrics unavailable.";
+    const doc = buildFormattedProductionDocx({
+      markdown: voiceoverDraft,
+      fileName: title,
+      tone: voiceoverTone,
+      exportedAt,
+      ratioLine,
     });
-    downloadBlob(await Packer.toBlob(doc), "dana-ai-final-voiceover.docx");
-    setVoiceoverMessage("Final voice-over DOCX downloaded successfully.");
+    const safeName = title
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^A-Za-z0-9ĀČĒĢĪĶĻŅŠŪŽāčēģīķļņšūž]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "DANA_AI";
+    downloadBlob(
+      await Packer.toBlob(doc),
+      `${safeName}_Production_Analysis_and_VO_Formatted.docx`,
+    );
+    setVoiceoverMessage("Production-ready formatted DOCX downloaded successfully.");
   };
   const exportPdf = async () => {
     if (!processed || !transcriptResults.length) {
@@ -2299,7 +2306,7 @@ This also removes it from the active project context.`)) return;
                   onClick={() => void exportVoiceoverDocx()}
                   disabled={!voiceoverDraft}
                 >
-                  Download final DOCX
+                  Download formatted final DOCX
                 </button>
               </div>
               {voiceoverMessage && (

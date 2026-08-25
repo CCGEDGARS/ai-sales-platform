@@ -6,7 +6,11 @@ on:
     paths:
       - app/api/generate-voiceover/route.ts
       - tests/golden-master-rescue.test.mjs
+      - scripts/apply-golden-master-rescue.py
       - .github/workflows/verify-golden-master-rescue.yml
+
+permissions:
+  contents: write
 
 jobs:
   test-build:
@@ -16,10 +20,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/golden-master-94-rescue
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+      - name: Apply Golden Master rescue
+        run: python3 scripts/apply-golden-master-rescue.py
       - run: npm ci
       - run: node --test tests/golden-master-rescue.test.mjs
+      - run: node --test tests/lepers-golden-master.test.mjs tests/lepers-mode.test.mjs tests/fifth-diner-voiceover.test.mjs
       - run: npm run build
+      - name: Commit verified production fix
+        shell: bash
+        run: |
+          if git diff --quiet app/api/generate-voiceover/route.ts; then
+            echo "No production changes required."
+            exit 0
+          fi
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts
+          git commit -m "Fix Golden Master near-pass rescue loop"
+          git pull --rebase origin fix/golden-master-94-rescue
+          git push origin HEAD:fix/golden-master-94-rescue

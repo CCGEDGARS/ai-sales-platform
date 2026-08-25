@@ -29,6 +29,19 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Repair patch-script regex substitutions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/fix-selective-voiceover.py')
+          s = p.read_text()
+          s = s.replace('ratio_pattern.subn(ratio_replacement, route, count=1)', 'ratio_pattern.subn(lambda _m: ratio_replacement, route, count=1)')
+          s = s.replace('prompts_pattern.subn(prompts_replacement, route, count=1)', 'prompts_pattern.subn(lambda _m: prompts_replacement, route, count=1)')
+          s = s.replace('correction_pattern.subn(correction_replacement, route, count=1)', 'correction_pattern.subn(lambda _m: correction_replacement, route, count=1)')
+          p.write_text(s)
+          PY
+
       - name: Apply selective voice-over repair
         run: python3 scripts/fix-selective-voiceover.py
 
@@ -44,8 +57,8 @@ jobs:
       - name: Commit completed repair
         shell: bash
         run: |
-          if git diff --quiet; then
-            echo "No changes required."
+          if git diff --quiet app/api/generate-voiceover/route.ts app/page.tsx; then
+            echo "No production changes required."
             exit 0
           fi
           git config user.name "DANA AI maintenance"

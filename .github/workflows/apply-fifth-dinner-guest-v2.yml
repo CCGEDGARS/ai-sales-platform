@@ -1,0 +1,54 @@
+name: Apply Fifth Dinner Guest v2
+
+on:
+  push:
+    branches: [feat/fifth-dinner-guest-v2]
+    paths:
+      - scripts/apply-fifth-dinner-guest-v2.py
+      - .github/workflows/apply-fifth-dinner-guest-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/fifth-dinner-guest-v2
+          fetch-depth: 0
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply Fifth Dinner Guest v2 patch
+        run: python3 scripts/apply-fifth-dinner-guest-v2.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run focused Fifth Dinner Guest tests
+        run: node --test tests/fifth-diner-voiceover.test.mjs
+
+      - name: Run full regression suite and production build
+        run: npm run build
+
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          if git diff --quiet app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts; then
+            echo "No production changes required."
+            exit 0
+          fi
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts
+          git commit -m "Enforce Fifth Dinner Guest v2 editorial behavior"
+          git pull --rebase origin feat/fifth-dinner-guest-v2
+          git push origin HEAD:feat/fifth-dinner-guest-v2

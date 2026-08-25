@@ -22,6 +22,16 @@ const RATIO_REFERENCE_SOURCES = [
   "Ieva Janiševa · Season 3",
 ];
 
+const GLOBAL_SCENE_DIRECTIVE_RULES = `
+GLOBAL SCENE DIRECTIVE — MANDATORY APPLICATION RULE
+- The user's Editorial brief is a GLOBAL SCENE DIRECTIVE, not a VO-only note.
+- In Lepers Standard, apply it coherently across all 8 sections of the Lepers production package: EP decision and story priorities; dramaturgy and act emphasis; KEEP / TIGHTEN / REMOVE / VERIFY decisions; VO MASTER narrator attitude and beat selection; teasers and promo; editorial/factual risk emphasis where relevant; editing and sound recommendations; and the final producer recommendation.
+- The brief may change emphasis, comic pressure, warmth, provocativeness, pacing, character focus, tension, sentiment and what moments are prioritised, as long as the source supports those choices.
+- Do not confine an edited brief to section 4. If the brief says to sharpen awkwardness, reduce sentiment, foreground a character contradiction, or prioritise a story line, that decision must be visible consistently throughout the package.
+- The brief must not override mandatory channel rules, the DANA Master Production System, participant dignity, factual discipline, canonical Lepers package structure or the current transcript as factual source of truth.
+- If the user's brief conflicts with a higher-priority rule, preserve the higher-priority rule and apply the brief as far as safely and editorially possible.
+`.trim();
+
 const FIFTH_DINER_EDITORIAL_RULES = `
 PIEKTĀ VAKARIŅOTĀJA PRINCIPS — MANDATORY CHANNEL RULE
 - The narrator is the piektā vakariņotāja: present in the content, with a point of view and a recognisable editorial personality.
@@ -323,12 +333,17 @@ ${toneProfile}
 
 ${FIFTH_DINER_EDITORIAL_RULES}
 
+${GLOBAL_SCENE_DIRECTIVE_RULES}
+
 ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`;
     const user = `Create the COMPLETE Lepers Standard production package for the CURRENT transcript, not merely a voice-over list. Follow the canonical section order and tables exactly. Match the Rihards Lepers reference in depth, rhythm, character insight, intelligent humour, decisive edit recommendations, VO delivery notes, teasers, risk control and final producer judgement.
 
 VOICE-OVER AMOUNT CONTROL: final runtime ${Math.round(finalRuntimeSeconds)} seconds; target approximately ${targetWords} spoken VO words; preferred band ${lowerWords}-${upperWords}. Count ONLY the GALA VO TEKSTS column in section 4. Never count analysis, production notes, promos or other sections. Never exceed ${upperWords}; never pad with obvious action, biography or dialogue paraphrase simply to reach the target.
 
-Editorial request: ${body.prompt || "Use the Rihards Lepers production standard as the benchmark for this scene."}
+GLOBAL SCENE DIRECTIVE — APPLY TO THE ENTIRE PACKAGE:
+${body.prompt || "Use the Rihards Lepers production standard as the benchmark for this scene."}
+
+Application check: before finalising, verify that this directive materially influences the EP decision, dramaturgy, KEEP / TIGHTEN / REMOVE / VERIFY choices, VO MASTER, teasers and promo, editing and sound recommendations, and final producer recommendation wherever the source evidence makes it relevant.
 
 APPLIED REFERENCE MANIFEST:
 ${body.context || "No reference manifest supplied."}
@@ -347,6 +362,8 @@ SELECTED TONE: ${selectedTone}
 ${toneProfile}
 
 ${FIFTH_DINER_EDITORIAL_RULES}
+
+${GLOBAL_SCENE_DIRECTIVE_RULES}
 The selected tone is mandatory: it must materially change rhythm, vocabulary, comic pressure, warmth, irony and sentence shape while all factual constraints remain unchanged.`;
   const user = `Create the final Latvian TV voice-over for this scene.
 
@@ -364,7 +381,8 @@ VOICE-OVER AMOUNT STANDARD:
 Final runtime: ${Math.round(finalRuntimeSeconds)} seconds.
 Target ≈ ${targetWords} spoken words. Preferred standard band: ${lowerWords}-${upperWords} words (16.17%-17.17% of runtime at 130 Latvian words/minute). Aim to fit this standard by choosing enough legitimate editorial beats. Never exceed ${upperWords} spoken words. If the source does not contain enough legitimate beats, return a shorter selective script rather than padding with recap, biography, dialogue paraphrase or obvious action.
 
-Editorial request: ${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}
+GLOBAL SCENE DIRECTIVE — APPLY TO THE COMPLETE VO OUTPUT:
+${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}
 
 Applied reference calibration: ${RATIO_REFERENCE_SOURCES.join(", ")}.
 Applied production context:

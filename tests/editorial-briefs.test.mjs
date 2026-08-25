@@ -42,3 +42,16 @@ test("voice-over form labels the left field Editorial brief", () => {
   assert.match(page, /Editorial brief/);
   assert.doesNotMatch(page, /What should this bridge do\?/);
 });
+
+test("edited Lepers brief is a global scene directive that must influence the entire production package", () => {
+  assert.match(route, /GLOBAL SCENE DIRECTIVE/);
+  assert.match(route, /all 8 sections of the Lepers production package/i);
+  assert.match(route, /EP decision/i);
+  assert.match(route, /dramaturgy/i);
+  assert.match(route, /KEEP \/ TIGHTEN \/ REMOVE \/ VERIFY/i);
+  assert.match(route, /VO MASTER/i);
+  assert.match(route, /teasers and promo/i);
+  assert.match(route, /editing and sound/i);
+  assert.match(route, /final producer recommendation/i);
+  assert.match(route, /must not override mandatory channel rules/i);
+});

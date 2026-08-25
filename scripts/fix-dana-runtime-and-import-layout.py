@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot production repair: runtime recovery + transcript import spacing.
 route_path = Path("app/api/generate-voiceover/route.ts")
 page_path = Path("app/page.tsx")
 css_path = Path("app/modules.css")

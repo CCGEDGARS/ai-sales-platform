@@ -30,5 +30,5 @@ test("stale browser brief versions cannot override the canonical Lepers default"
   assert.match(page, /savedVersion\s*!==\s*EDITORIAL_BRIEF_SCHEMA_VERSION/);
   assert.match(page, /\[DEFAULT_EDITORIAL_TONE\]:\s*DEFAULT_LEPERS_EDITORIAL_BRIEF/);
   assert.match(page, /setVoiceoverPrompt\(DEFAULT_LEPERS_EDITORIAL_BRIEF\)/);
-  assert.match(page, /localStorage\.setItem\(EDITORIAL_BRIEF_VERSION_KEY,\s*EDITORIAL_BRIEF_SCHEMA_VERSION\)/);
+  assert.match(page, /localStorage\.setItem\(\s*EDITORIAL_BRIEF_VERSION_KEY,\s*EDITORIAL_BRIEF_SCHEMA_VERSION,?\s*\)/);
 });

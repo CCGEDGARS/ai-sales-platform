@@ -331,6 +331,34 @@ export default function Home() {
       );
     } catch {}
   }, [appliedSources]);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("dana-ai-transcript-session");
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        transcriptResults?: TranscriptResult[];
+        finalRuntimeSeconds?: number;
+        fileName?: string;
+      };
+      if (Array.isArray(saved.transcriptResults) && saved.transcriptResults.length) {
+        setTranscriptResults(saved.transcriptResults);
+        setFinalRuntimeSeconds(Number(saved.finalRuntimeSeconds) || 0);
+        setFileName(saved.fileName || saved.transcriptResults[0]?.fileName || "");
+        setProcessed(true);
+        setUploaded(true);
+        setTranscriptionMessage("Validated transcript restored from this device.");
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    if (!processed || !transcriptResults.length) return;
+    try {
+      window.localStorage.setItem(
+        "dana-ai-transcript-session",
+        JSON.stringify({ transcriptResults, finalRuntimeSeconds, fileName }),
+      );
+    } catch {}
+  }, [processed, transcriptResults, finalRuntimeSeconds, fileName]);
   const formatElapsed = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
@@ -1012,6 +1040,72 @@ export default function Home() {
       setRefreshing(false);
     }
   };
+  const pollVoiceoverJob = async (
+    responseId: string,
+    pollCount = 0,
+  ): Promise<void> => {
+    if (pollCount > 360) {
+      window.localStorage.removeItem("dana-ai-pending-voiceover");
+      setVoiceoverStatus("failed");
+      setVoiceoverMessage(
+        "OpenAI is still processing after 15 minutes. The job was left safely in OpenAI; press Write voice-over draft to start a new run if needed.",
+      );
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/generate-voiceover?responseId=${encodeURIComponent(responseId)}`,
+        { cache: "no-store" },
+      );
+      const raw = await response.text();
+      let result: Record<string, any> = {};
+      try {
+        result = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          `Voice-over service returned HTTP ${response.status} without JSON${raw ? `: ${raw.slice(0, 220)}` : "."}`,
+        );
+      }
+      if (!response.ok || !result.ok) {
+        throw new Error(
+          String(result.message || `Voice-over job check failed (HTTP ${response.status}).`),
+        );
+      }
+      const nextId = String(result.responseId || responseId);
+      if (result.status === "completed" && typeof result.text === "string" && result.text.trim()) {
+        window.localStorage.removeItem("dana-ai-pending-voiceover");
+        setVoiceoverDraft(result.text);
+        setVoiceoverMetrics(result.metrics || null);
+        setVoiceoverStatus("generated");
+        setVoiceoverMessage(
+          result.ratioWarning
+            ? `Voice-over generated with ${result.model}. Editorial draft is ready; ratio is ${result.metrics?.ratioPercent ?? "—"}% and needs a final timing review.`
+            : `Generated successfully with ${result.model}. Ratio gate passed: ${result.metrics?.ratioPercent ?? "—"}% of runtime. Review before saving.`,
+        );
+        return;
+      }
+      if (result.status === "queued" || result.status === "in_progress") {
+        window.localStorage.setItem("dana-ai-pending-voiceover", nextId);
+        setVoiceoverStatus("generating");
+        setVoiceoverMessage(
+          result.phase === "correction"
+            ? "Voice-over draft is ready and DANA AI is automatically correcting the mandatory narration ratio…"
+            : "OpenAI is generating the voice-over in a durable background job. You can keep this page open while it finishes…",
+        );
+        window.setTimeout(() => {
+          void pollVoiceoverJob(nextId, pollCount + 1);
+        }, 2500);
+        return;
+      }
+      throw new Error(`Unexpected voice-over job status: ${String(result.status || "unknown")}.`);
+    } catch (error) {
+      window.localStorage.removeItem("dana-ai-pending-voiceover");
+      setVoiceoverStatus("failed");
+      setVoiceoverMessage(
+        error instanceof Error ? error.message : "Voice-over generation failed.",
+      );
+    }
+  };
   const generateVoiceover = async () => {
     if (!processed || !transcriptResults.length) {
       setVoiceoverStatus("failed");
@@ -1030,13 +1124,14 @@ export default function Home() {
       return;
     }
     setVoiceoverStatus("generating");
-    setVoiceoverMessage(
-      "Generating from the validated transcript and applied production context…",
-    );
+    setVoiceoverMessage("Starting a durable OpenAI background voice-over job…");
     try {
       const response = await fetch("/api/generate-voiceover", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-DANA-Voiceover-Mode": "background",
+        },
         body: JSON.stringify({
           apiKey: openAIKey.trim(),
           transcript: transcriptText,
@@ -1047,22 +1142,30 @@ export default function Home() {
           finalRuntimeSeconds,
         }),
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok)
-        throw new Error(result.message || "Voice-over generation failed.");
-      setVoiceoverDraft(result.text);
-      setVoiceoverMetrics(result.metrics || null);
-      setVoiceoverStatus("generated");
-      setVoiceoverMessage(
-        `Generated successfully with ${result.model}. Ratio gate passed: ${result.metrics?.ratioPercent ?? "—"}% of runtime. Review before saving.`,
-      );
+      const raw = await response.text();
+      let result: Record<string, any> = {};
+      try {
+        result = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          `Voice-over service returned HTTP ${response.status} without JSON${raw ? `: ${raw.slice(0, 220)}` : "."}`,
+        );
+      }
+      if (!response.ok || !result.ok) {
+        throw new Error(
+          String(result.message || `Voice-over job could not start (HTTP ${response.status}).`),
+        );
+      }
+      const responseId = String(result.responseId || "");
+      if (!responseId) throw new Error("OpenAI started no retrievable voice-over job.");
+      window.localStorage.setItem("dana-ai-pending-voiceover", responseId);
+      setVoiceoverMessage("Voice-over job started. Waiting for OpenAI to finish…");
+      await pollVoiceoverJob(responseId);
     } catch (error) {
+      window.localStorage.removeItem("dana-ai-pending-voiceover");
       setVoiceoverStatus("failed");
-      setVoiceoverMetrics(error && typeof error === "object" && "metrics" in error ? (error as { metrics?: VoiceoverMetrics }).metrics || null : null);
       setVoiceoverMessage(
-        error instanceof Error
-          ? error.message
-          : "Voice-over generation failed.",
+        error instanceof Error ? error.message : "Voice-over generation failed.",
       );
     }
   };
@@ -1806,8 +1909,8 @@ export default function Home() {
               <div className="voiceover-model-note" aria-label="Voice-over model">
                 <span>✦</span>
                 <div>
-                  <b>GPT-5.6 Sol · high reasoning</b>
-                  <small>Frontier editorial generation model. A GPT-5.4 fallback is used only if the connected API cannot serve GPT-5.6 Sol.</small>
+                  <b>GPT-5.6 Sol · durable background generation</b>
+                  <small>Frontier editorial generation runs as a durable OpenAI background job. GPT-5.6 Terra is the automatic fallback and ratio-correction model.</small>
                 </div>
               </div>
               <div className="voiceover-controls">

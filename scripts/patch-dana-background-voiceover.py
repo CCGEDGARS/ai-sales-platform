@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 
+# One-shot production patch: replace synchronous voice-over generation with durable background polling.
 PAGE = Path("app/page.tsx")
 text = PAGE.read_text()
 

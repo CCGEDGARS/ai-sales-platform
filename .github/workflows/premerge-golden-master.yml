@@ -1,0 +1,20 @@
+name: Premerge Golden Master
+
+on:
+  push:
+    branches: [dana-global-scene-brief]
+
+jobs:
+  verify:
+    if: ${{ !contains(github.event.head_commit.message, 'Remove pre-merge Golden Master verification') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high

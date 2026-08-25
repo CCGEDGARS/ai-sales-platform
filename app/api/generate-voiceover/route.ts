@@ -13,6 +13,7 @@ const PRIMARY_VOICEOVER_MODEL = "gpt-5.6-sol";
 const FALLBACK_VOICEOVER_MODEL = "gpt-5.6-terra";
 const LEGACY_VOICEOVER_MODEL = "gpt-5.6-terra";
 const DEFAULT_TONE = "Lepers Standard · premium observational comedy";
+const TAILORED_TONE = "Tailored · custom editorial direction";
 const MAX_BACKGROUND_CORRECTIONS = 2;
 
 const RATIO_REFERENCE_SOURCES = [
@@ -36,6 +37,8 @@ const TONE_PROFILES: Record<string, string> = {
     "FAST BRIDGE. Compact sentences, active verbs and strong transitions. Every line must move the story or sharpen expectation. No decorative filler.",
   "Classic · British original":
     "CLASSIC BRITISH FORMAT. Dry, clever, lightly cheeky and socially observant. Use elegant understatement and comic reversals. Avoid hype, melodrama and direct insults.",
+  [TAILORED_TONE]:
+    "TAILORED. Follow the user's editorial brief as the primary stylistic direction. Translate that brief into a coherent Latvian broadcast narrator voice while preserving evidence discipline, participant dignity, selective narration and the voice-over amount standard. Do not inherit Lepers styling unless the user's brief explicitly asks for it.",
 };
 
 function toneProfileFor(tone: string) {

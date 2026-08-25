@@ -55,12 +55,11 @@ if 'deterministic Golden Master score reaches at least' not in route:
         raise SystemExit('missing correction system anchor')
     route = route.replace(old, new, 1)
 
-corr_anchor = '''Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`'''
-corr_repl = '''Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`'''
 if 'current score ${goldenMaster?.score ?? 0}/100' not in route:
-    if corr_anchor not in route:
-        raise SystemExit('missing correction user anchor')
-    route = route.replace(corr_anchor, corr_repl, 1)
+    corr_phrase = 'Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.'
+    if corr_phrase not in route:
+        raise SystemExit('missing correction phrase')
+    route = route.replace(corr_phrase, corr_phrase + ' GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}', 1)
 
 reject_anchor = '''    if (metrics.overLimit) {
       return NextResponse.json('''
@@ -96,7 +95,6 @@ if 'Golden Master Match' not in page:
     if needle not in page:
         raise SystemExit('missing ratio UI anchor')
     page = page.replace(needle, replacement, 1)
-# Keep API value backward-compatible; change only visible label if the literal option is present.
 page = page.replace('<option selected="">Lepers Standard · premium observational comedy</option>', '<option value={DEFAULT_EDITORIAL_TONE}>{GOLDEN_MASTER_LABEL}</option>')
 page_path.write_text(page)
 print('Golden Master integration applied')

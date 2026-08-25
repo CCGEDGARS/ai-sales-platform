@@ -37,7 +37,7 @@ test("Lepers Standard is a full production package contract, not a cue-only tran
     "Galīgā producenta rekomendācija",
   ]) assert.match(contract, new RegExp(heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(voiceover, /LEPERS_PRODUCTION_PACKAGE_CONTRACT/);
-  assert.match(voiceover, /Rihards Lepers reference is the canonical benchmark/);
+  assert.match(contract, /Rihards Lepers reference is the canonical benchmark/);
 });
 
 test("Lepers ratio is calculated only from VO MASTER spoken text", () => {

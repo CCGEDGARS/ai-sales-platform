@@ -43,5 +43,5 @@ test("legacy synchronous Lepers generation cannot bypass the Second Story gate",
 test("the visible default Editorial brief tells DANA to create a Second Story", () => {
   assert.match(page, /Second Story/i);
   assert.match(page, /create|veido|build/i);
-  assert.match(page, /EDITORIAL_BRIEF_SCHEMA_VERSION\s*=\s*"2026-08-25-second-story-v3"/);
+  assert.match(page, /EDITORIAL_BRIEF_SCHEMA_VERSION\s*=\s*"2026-08-25-visual-evidence-v4"/);
 });

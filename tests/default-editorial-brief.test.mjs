@@ -4,14 +4,14 @@ import fs from "node:fs";
 
 const page = fs.readFileSync("app/page.tsx", "utf8");
 
-const expectedBrief = "Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest and editorial co-author: do not just reflect the footage—create a bold Second Story from verified reality using new angles, metaphors, hypotheses, predictions, contradictions and callbacks. Add story, humour, tension, character or emotion; never invent facts, motives or events, humiliate participants, or pad VO. Keep VO selective near 16.67%.";
+const expectedBrief = "Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest and editorial co-author: do not just reflect—create a bold Second Story from verified dialogue + visual evidence using new angles, metaphors, hypotheses, predictions, contradictions and callbacks. Add story, humour, tension, character or emotion; never invent facts, motives or events, humiliate participants, or pad VO. Keep VO selective near 16.67%.";
 
 test("default Lepers editorial brief exposes the compact Fifth Dinner Guest + Second Story doctrine", () => {
   assert.match(page, new RegExp(expectedBrief.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(page, /invisible fifth dinner guest/i);
   assert.match(page, /editorial co-author/i);
   assert.match(page, /Second Story/i);
-  assert.match(page, /verified reality/i);
+  assert.match(page, /verified dialogue \+ visual evidence/i);
   assert.match(page, /metaphors, hypotheses, predictions, contradictions and callbacks/i);
   assert.match(page, /never invent facts, motives or events/i);
   assert.match(page, /selective near 16\.67%/i);

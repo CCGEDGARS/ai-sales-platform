@@ -52,6 +52,9 @@ type TranscriptResult = {
   transcript: string;
   model: string;
   timecodes: boolean;
+  visualEvidence?: string;
+  visualEvidenceAvailable?: boolean;
+  visualEvidenceModel?: string;
 };
 type SegmentPayload = {
   file: File;
@@ -143,8 +146,8 @@ const TAILORED_TONE = "Tailored · custom editorial direction";
 const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
 const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
 const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.';
-const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest and editorial co-author: do not just reflect the footage—create a bold Second Story from verified reality using new angles, metaphors, hypotheses, predictions, contradictions and callbacks. Add story, humour, tension, character or emotion; never invent facts, motives or events, humiliate participants, or pad VO. Keep VO selective near 16.67%.';
-const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-second-story-v3";
+const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest and editorial co-author: do not just reflect—create a bold Second Story from verified dialogue + visual evidence using new angles, metaphors, hypotheses, predictions, contradictions and callbacks. Add story, humour, tension, character or emotion; never invent facts, motives or events, humiliate participants, or pad VO. Keep VO selective near 16.67%.';
+const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-visual-evidence-v4";
 const EDITORIAL_BRIEF_VERSION_KEY = "dana-ai-editorial-brief-version";
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
@@ -559,13 +562,79 @@ export default function Home() {
     if (!response.ok || !data?.ok) {
       throw new Error(data?.message || `Gemini transcription failed (HTTP ${response.status}).`);
     }
-    onUpdate("Transcript returned and timecodes validated.", 90);
+
+    onUpdate("Gemini is creating a separate Visual Evidence Pass…", 82);
+    let visualEvidence = "";
+    let visualEvidenceAvailable = false;
+    let visualEvidenceModel = "";
+    try {
+      const visualResponse = await fetch("/api/visual-evidence-uploaded", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uploadedFile: uploaded,
+          originalFile: file.name,
+          model: GEMINI_DIRECT_MODEL,
+        }),
+      });
+      const visualData = await visualResponse.json().catch(() => ({}));
+      if (visualResponse.ok && visualData?.ok && typeof visualData.visualEvidence === "string") {
+        visualEvidence = visualData.visualEvidence.trim();
+        visualEvidenceAvailable = Boolean(visualEvidence);
+        visualEvidenceModel = visualData.model || GEMINI_DIRECT_MODEL;
+      }
+    } catch {
+      // Visual evidence is an additive channel. A failed visual pass never corrupts
+      // or blocks an otherwise valid authentic transcript.
+    }
+
+    onUpdate(
+      visualEvidenceAvailable
+        ? "Transcript and separate timestamped visual evidence returned."
+        : "Transcript returned; visual evidence unavailable for this source.",
+      90,
+    );
     return {
       fileName: data.fileName || file.name,
       transcript: data.transcript,
       model: data.model || GEMINI_DIRECT_MODEL,
       timecodes: data.timecodes === true,
+      visualEvidence,
+      visualEvidenceAvailable,
+      visualEvidenceModel,
     };
+  };
+
+  const analyzeVisualEvidenceDirectly = async (
+    file: File,
+    apiKey: string,
+    onUpdate: (detail: string, percent: number) => void,
+  ): Promise<Pick<TranscriptResult, "visualEvidence" | "visualEvidenceAvailable" | "visualEvidenceModel">> => {
+    try {
+      onUpdate(`Uploading ${file.name} for the separate Visual Evidence Pass…`, 72);
+      const uploaded = await uploadVideoDirectlyToGemini(file);
+      await waitForGeminiVideo(uploaded.name, apiKey, onUpdate);
+      const response = await fetch("/api/visual-evidence-uploaded", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uploadedFile: uploaded,
+          originalFile: file.name,
+          model: GEMINI_DIRECT_MODEL,
+        }),
+      });
+      const visualData = await response.json().catch(() => ({}));
+      if (!response.ok || !visualData?.ok || typeof visualData.visualEvidence !== "string") {
+        return { visualEvidence: "", visualEvidenceAvailable: false, visualEvidenceModel: "" };
+      }
+      return {
+        visualEvidence: visualData.visualEvidence.trim(),
+        visualEvidenceAvailable: Boolean(visualData.visualEvidence.trim()),
+        visualEvidenceModel: visualData.model || GEMINI_DIRECT_MODEL,
+      };
+    } catch {
+      return { visualEvidence: "", visualEvidenceAvailable: false, visualEvidenceModel: "" };
+    }
   };
   const inferRuntimeFromTranscript = (value: string) => {
     const matches = Array.from(
@@ -610,6 +679,9 @@ export default function Home() {
           transcript: importedTranscript,
           model: "Imported validated transcript",
           timecodes: data.timecodes === true,
+          visualEvidence: "",
+          visualEvidenceAvailable: false,
+          visualEvidenceModel: "",
         },
       ]);
       setFinalRuntimeSeconds(runtimeSeconds);
@@ -1101,6 +1173,20 @@ This also removes it from the active project context.`)) return;
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.message || "The native transcription worker returned an error.");
         results = result.results || [];
+        if (results.length && videoFiles[0]) {
+          const visual = await analyzeVisualEvidenceDirectly(
+            videoFiles[0],
+            geminiKey.trim(),
+            (detail, percent) => {
+              setProcessingDetail(detail);
+              setProcessingPercent(Math.max(70, percent));
+              setProcessingMessage(detail);
+            },
+          );
+          results = results.map((item, itemIndex) =>
+            itemIndex === 0 ? { ...item, ...visual } : item,
+          );
+        }
       } else {
         setProcessingStage("uploading");
         setProcessingPercent(40);
@@ -1133,9 +1219,28 @@ This also removes it from the active project context.`)) return;
               return `[${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}]`;
             },
           );
+          const adjustedVisualEvidence = (directResult.visualEvidence || "").replace(
+            /\[?(\d{1,2}):(\d{2})(?::(\d{2}))?\]?/g,
+            (_match, a, b, c) => {
+              const localSeconds =
+                c === undefined
+                  ? Number(a) * 60 + Number(b)
+                  : Number(a) * 3600 + Number(b) * 60 + Number(c);
+              const totalSeconds = Math.max(
+                0,
+                Math.round(localSeconds + segment.startSeconds),
+              );
+              const hours = Math.floor(totalSeconds / 3600);
+              const minutes = Math.floor((totalSeconds % 3600) / 60);
+              const seconds = totalSeconds % 60;
+              return `[${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}]`;
+            },
+          );
           directResults.push({
             ...directResult,
             transcript: adjustedTranscript,
+            visualEvidence: adjustedVisualEvidence,
+            visualEvidenceAvailable: Boolean(adjustedVisualEvidence.trim()),
           });
         }
         results = directResults;
@@ -1457,6 +1562,7 @@ This also removes it from the active project context.`)) return;
         body: JSON.stringify({
           apiKey: openAIKey.trim(),
           transcript: transcriptText,
+          visualEvidence: visualEvidenceText,
           prompt: voiceoverPrompt,
           tone: voiceoverTone,
           context: buildReferenceBrief(appliedSources),
@@ -1551,6 +1657,10 @@ This also removes it from the active project context.`)) return;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const visualEvidenceText = transcriptResults
+    .filter((result) => result.visualEvidenceAvailable && result.visualEvidence?.trim())
+    .map((result) => `## ${result.fileName}\n\n${result.visualEvidence}`)
+    .join("\n\n");
   const transcriptText =
     transcriptResults
       .map((result) => `## ${result.fileName}\n\n${result.transcript}`)
@@ -2207,6 +2317,23 @@ This also removes it from the active project context.`)) return;
               {processed ? (
                 <>
                   <pre className="transcript-text">{transcriptText}</pre>
+                  <div className="knowledge-note">
+                    <span>{visualEvidenceText ? "◉" : "○"}</span>
+                    <div>
+                      <b>Visual Evidence Pass · {visualEvidenceText ? "AVAILABLE" : "UNAVAILABLE"}</b>
+                      <p>
+                        {visualEvidenceText
+                          ? "A separate timestamped visual evidence log is active for editorial authorship. It is never merged into or exported as the authentic transcript."
+                          : "Visual evidence unavailable. DANA will use the authentic transcript only and must not invent visual details."}
+                      </p>
+                    </div>
+                  </div>
+                  {visualEvidenceText ? (
+                    <details>
+                      <summary>View timestamped visual evidence</summary>
+                      <pre className="transcript-text">{visualEvidenceText}</pre>
+                    </details>
+                  ) : null}
                   <div className="document-actions">
                     <button type="button" className="export-btn" onClick={saveTimecodeDocument}>
                       Save timecode document

@@ -58,7 +58,8 @@ SECOND STORY — MANDATORY EDITORIAL AUTHORSHIP RULE
 - For every significant scene, actively ask: “What else could this scene be about?” Then build one additional editorial storyline from verified reality.
 - The Second Story may be a tension, game, contradiction or lens such as confidence versus the clock, control versus chaos, politeness versus true reaction, ambition versus reality, friendship versus scoring, or another source-grounded angle unique to the scene.
 - DANA may create framing, metaphor, comic premise, hypothesis, prediction, provocative question, juxtaposition, narrative label, setup, escalation, payoff and running motif. This is editorial authorship, not factual invention.
-- Ground the Second Story in observable or audible evidence. Use real claims, behaviour, timing, reactions, objects, silences or reversals as anchors, then create original language and an original editorial angle around them.
+- Ground the Second Story in the two factual evidence channels supplied by DANA: the authentic transcript for spoken words and the Visual Evidence Pass for observable non-verbal facts. Use real claims, behaviour, timing, reactions, objects, silences or reversals as anchors, then create original language and an original editorial angle around them.
+- Treat visual evidence as observation, never as ready-made interpretation. DANA may interpret it editorially only after grounding the claim and must qualify uncertain emotional readings.
 - Develop the strongest Second Story across setup → escalation → payoff/callback when the source supports it. Remember earlier claims and let later reality test them.
 - Reflection-only VO is a failure mode. A line that merely says someone is nervous, surprised, cooking, waiting or losing confidence must be rewritten unless it adds a new authored angle.
 - Invent the editorial idea around reality; never invent reality.
@@ -104,6 +105,7 @@ type OpenAIResponseData = {
 type VoiceoverInput = {
   apiKey?: string;
   transcript?: string;
+  visualEvidence?: string;
   prompt?: string;
   tone?: string;
   context?: string;
@@ -379,6 +381,9 @@ function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
   const toneProfile = toneProfileFor(selectedTone);
   const { targetWords, lowerWords, upperWords } = wordTargets(finalRuntimeSeconds);
   const references = referenceContentBlock(body);
+  const visualEvidence = body.visualEvidence?.trim()
+    ? body.visualEvidence.trim()
+    : "VISUAL EVIDENCE UNAVAILABLE — transcript-only source. Do not invent visual actions, reactions, objects, gestures or off-camera facts.";
   if (isLepersTone(selectedTone)) {
     const system = `You are DANA AI, a senior Latvian executive television producer, story editor and voice-over writer for Gandrīz ideālas vakariņas. The Rihards Lepers production-analysis reference is the canonical editorial benchmark for this mode. Write fluent, natural, production-ready Latvian. Never invent facts and never transfer factual details from a reference episode into the current episode.
 
@@ -413,7 +418,12 @@ ${body.context || "No reference manifest supplied."}
 APPLIED REFERENCE CONTENT:
 ${references}
 
-CURRENT SOURCE TRANSCRIPT — THIS IS THE FACTUAL SOURCE OF TRUTH:
+VISUAL EVIDENCE — OBSERVABLE FACTS ONLY, NOT EDITORIAL INTERPRETATION:
+${visualEvidence}
+
+EVIDENCE DISCIPLINE: the authentic transcript is the factual source of truth for spoken words. The Visual Evidence Pass is a separate factual observation channel for what is directly visible or non-verbally audible. Do not convert a visual observation into motive, emotion or causality unless the source supports it; uncertain interpretation must remain qualified.
+
+CURRENT SOURCE TRANSCRIPT — THIS IS THE FACTUAL SOURCE OF TRUTH FOR DIALOGUE:
 ${body.transcript}`;
     return { selectedTone, system, user, targetWords, lowerWords, upperWords };
   }
@@ -456,7 +466,12 @@ ${body.context || "No reference manifest supplied."}
 APPLIED REFERENCE CONTENT:
 ${references}
 
-SOURCE TRANSCRIPT:
+VISUAL EVIDENCE — OBSERVABLE FACTS ONLY, NOT EDITORIAL INTERPRETATION:
+${visualEvidence}
+
+EVIDENCE DISCIPLINE: transcript = factual spoken-word channel; Visual Evidence Pass = factual observable channel. Editorial interpretation is DANA's separate layer and must never be presented as an observed fact when uncertain.
+
+SOURCE TRANSCRIPT — FACTUAL DIALOGUE SOURCE OF TRUTH:
 ${body.transcript}`;
   return { selectedTone, system, user, targetWords, lowerWords, upperWords };
 }

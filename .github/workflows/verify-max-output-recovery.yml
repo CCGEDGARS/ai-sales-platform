@@ -1,0 +1,20 @@
+name: Verify max output recovery
+
+on:
+  push:
+    branches: [fix/voiceover-max-output-recovery]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/voiceover-max-output-recovery
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/max-output-recovery.test.mjs

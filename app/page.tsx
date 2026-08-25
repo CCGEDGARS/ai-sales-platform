@@ -211,6 +211,10 @@ export default function Home() {
     null,
   );
   const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [sourceStatus, setSourceStatus] = useState<
+    "idle" | "indexing" | "success" | "error"
+  >("idle");
+  const [sourceMessage, setSourceMessage] = useState("");
   const [librarySources, setLibrarySources] = useState<Source[]>(() => {
     if (typeof window === "undefined") return defaultSources;
     try {
@@ -629,6 +633,8 @@ export default function Home() {
     });
   };
   const chooseSource = () => sourceInput.current?.click();
+  const isVideoReferenceFile = (file: File) =>
+    file.type.startsWith("video/") || /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name);
   const onSegments = (files?: FileList | null) => {
     if (!files?.length) return;
     const imported = Array.from(files)
@@ -642,42 +648,131 @@ export default function Home() {
   const onSources = async (files?: FileList | null) => {
     if (!files?.length) return;
     const incoming = Array.from(files);
-    setProjectMessage(`Indexing ${incoming.length} reference source${incoming.length === 1 ? "" : "s"}…`);
+    setSourceStatus("indexing");
+    setSourceMessage(
+      `Indexing ${incoming.length} source${incoming.length === 1 ? "" : "s"}…`,
+    );
+    setProjectMessage(
+      `Indexing ${incoming.length} reference source${incoming.length === 1 ? "" : "s"}…`,
+    );
     const additions: Source[] = [];
     const indexedContents: Record<string, string> = {};
     const failures: string[] = [];
+    const existingNames = new Set(librarySources.map((source) => source[1]));
+    const updatedNames: string[] = [];
+    const addedNames: string[] = [];
+
     for (const file of incoming) {
       try {
+        if (isVideoReferenceFile(file)) {
+          const extension = String(file.name.split(".").pop() || "VIDEO").toUpperCase();
+          additions.push([
+            "Video reference",
+            file.name,
+            "Registered video reference",
+            extension,
+          ]);
+          (existingNames.has(file.name) ? updatedNames : addedNames).push(file.name);
+          continue;
+        }
+
         const form = new FormData();
         form.append("file", file);
-        const response = await fetch("/api/ingest-reference", { method: "POST", body: form });
+        const response = await fetch("/api/ingest-reference", {
+          method: "POST",
+          body: form,
+        });
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data?.ok) {
-          throw new Error(data?.message || `Could not index ${file.name} (HTTP ${response.status}).`);
+          throw new Error(
+            data?.message || `Could not index ${file.name} (HTTP ${response.status}).`,
+          );
         }
-        const extension = String(data.extension || file.name.split(".").pop() || "FILE").toUpperCase();
-        const type = data.kind === "video" ? "Video reference" : "Production reference";
-        additions.push([type, file.name, data.indexed ? "Indexed knowledge source" : "Registered video reference", extension]);
-        if (data.indexed && typeof data.content === "string" && data.content.trim()) {
+        const extension = String(
+          data.extension || file.name.split(".").pop() || "FILE",
+        ).toUpperCase();
+        const type =
+          data.kind === "video" ? "Video reference" : "Production reference";
+        additions.push([
+          type,
+          file.name,
+          data.indexed ? "Indexed knowledge source" : "Registered video reference",
+          extension,
+        ]);
+        (existingNames.has(file.name) ? updatedNames : addedNames).push(file.name);
+        if (
+          data.indexed &&
+          typeof data.content === "string" &&
+          data.content.trim()
+        ) {
           indexedContents[file.name] = data.content;
         }
       } catch (error) {
-        failures.push(error instanceof Error ? `${file.name}: ${error.message}` : `${file.name}: indexing failed`);
+        failures.push(
+          error instanceof Error
+            ? `${file.name}: ${error.message}`
+            : `${file.name}: indexing failed`,
+        );
       }
     }
+
     if (additions.length) {
       setLibrarySources((current) => {
         const incomingNames = new Set(additions.map((source) => source[1]));
-        return [...current.filter((source) => !incomingNames.has(source[1])), ...additions];
+        const coreSources = current.filter(
+          (source) => source[1] === CORE_SOURCE_NAME,
+        );
+        const remaining = current.filter(
+          (source) =>
+            source[1] !== CORE_SOURCE_NAME && !incomingNames.has(source[1]),
+        );
+        return [...coreSources, ...additions, ...remaining];
       });
-      setReferenceContents((current) => ({ ...current, ...indexedContents }));
-      setAppliedSources((current) => Array.from(new Set([...current, ...additions.map((source) => source[1]), CORE_SOURCE_NAME])));
+      setReferenceContents((current) => ({
+        ...current,
+        ...indexedContents,
+      }));
+      setAppliedSources((current) =>
+        Array.from(
+          new Set([
+            ...current,
+            ...additions.map((source) => source[1]),
+            CORE_SOURCE_NAME,
+          ]),
+        ),
+      );
     }
+
+    const successParts = [
+      addedNames.length
+        ? `Added: ${addedNames.join(", ")}.`
+        : "",
+      updatedNames.length
+        ? `Updated/re-indexed: ${updatedNames.join(", ")}.`
+        : "",
+      Object.keys(indexedContents).length
+        ? `${Object.keys(indexedContents).length} document${Object.keys(indexedContents).length === 1 ? "" : "s"} indexed into editorial context.`
+        : "",
+      additions.some((source) => source[0] === "Video reference")
+        ? "Video references were registered without uploading unused video bytes."
+        : "",
+    ].filter(Boolean);
+
+    const finalMessage = [
+      successParts.join(" "),
+      failures.length ? `Failed: ${failures.join(" · ")}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    setSourceStatus(
+      failures.length && !additions.length ? "error" : failures.length ? "error" : "success",
+    );
+    setSourceMessage(
+      finalMessage || "No sources were added. Choose a supported reference file.",
+    );
     setProjectMessage(
-      [
-        additions.length ? `${additions.length} source${additions.length === 1 ? "" : "s"} added and applied. ${Object.keys(indexedContents).length} document${Object.keys(indexedContents).length === 1 ? "" : "s"} indexed into real editorial context.` : "No sources were added.",
-        failures.length ? `Failed: ${failures.join(" · ")}` : "",
-      ].filter(Boolean).join(" "),
+      finalMessage || "No sources were added. Choose a supported reference file.",
     );
     if (sourceInput.current) sourceInput.current.value = "";
   };
@@ -1671,7 +1766,7 @@ This also removes it from the active project context.`)) return;
         <input
           ref={sourceInput}
           type="file"
-          accept="video/*,.txt,.pdf,.doc,.docx,.srt,.vtt,.mp3,.wav"
+          accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.txt,.pdf,.docx,.srt,.vtt,.md,.csv"
           multiple
           hidden
           onChange={(e) => onSources(e.target.files)}
@@ -1929,8 +2024,9 @@ This also removes it from the active project context.`)) return;
                     type="button"
                     className="ghost-btn"
                     onClick={chooseSource}
+                    disabled={sourceStatus === "indexing"}
                   >
-                    ＋ Add source
+                    {sourceStatus === "indexing" ? "Indexing…" : "＋ Add source"}
                   </button>
                   <button
                     type="button"
@@ -1943,6 +2039,24 @@ This also removes it from the active project context.`)) return;
                   </button>
                 </div>
               </div>
+              {sourceMessage && (
+                <div
+                  className={`source-feedback ${sourceStatus}`}
+                  role={sourceStatus === "error" ? "alert" : "status"}
+                >
+                  <span>{sourceStatus === "indexing" ? "…" : sourceStatus === "error" ? "!" : "✓"}</span>
+                  <div>
+                    <b>
+                      {sourceStatus === "indexing"
+                        ? "Indexing source"
+                        : sourceStatus === "error"
+                          ? "Source needs attention"
+                          : "Source ready"}
+                    </b>
+                    <small>{sourceMessage}</small>
+                  </div>
+                </div>
+              )}
               <div className="source-list">
                 {librarySources.map(([type, name, , ext]) => {
                   const isApplied = appliedSources.includes(name);

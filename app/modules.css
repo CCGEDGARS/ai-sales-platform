@@ -75,3 +75,11 @@
   .transcript-import-placeholder { padding: 24px 18px; gap: 14px; }
   .transcript-import-placeholder .primary-btn { width: 100%; min-width: 0; }
 }
+
+.source-feedback { display:flex; gap:10px; align-items:flex-start; margin:14px 0 4px; padding:12px 14px; border:1px solid #d7e4d9; border-radius:9px; background:#f5faf5; color:#315a45; }
+.source-feedback > span { flex:0 0 24px; width:24px; height:24px; display:grid; place-items:center; border-radius:50%; background:#dcebdd; font-weight:900; }
+.source-feedback b, .source-feedback small { display:block; }
+.source-feedback small { margin-top:3px; line-height:1.45; color:inherit; opacity:.86; }
+.source-feedback.indexing { border-color:#e5dcc4; background:#fffaf0; color:#6b5733; }
+.source-feedback.error { border-color:#eccfc8; background:#fff5f2; color:#934735; }
+.library-actions .ghost-btn:disabled { opacity:.6; cursor:wait; }

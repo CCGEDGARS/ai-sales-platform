@@ -84,7 +84,9 @@ type Mp4Processor = {
   flush: () => void;
 };
 
-const protectedSources = [
+const CORE_SOURCE_NAME = "DANA AI Master Production System";
+
+const defaultSources = [
   ["British original", "Come Dine With Me.mp4", "Format reference", "MP4"],
   [
     "Latvian reference",
@@ -185,35 +187,41 @@ export default function Home() {
   );
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const [librarySources, setLibrarySources] = useState<Source[]>(() => {
-    if (typeof window === "undefined") return protectedSources;
+    if (typeof window === "undefined") return defaultSources;
     try {
-      const saved = JSON.parse(
-        window.localStorage.getItem("dana-ai-library-sources") || "[]",
-      ) as Source[];
+      const raw = window.localStorage.getItem("dana-ai-library-sources");
+      if (!raw) return defaultSources;
+      const saved = JSON.parse(raw) as Source[];
+      const core = defaultSources.find((source) => source[1] === CORE_SOURCE_NAME)!;
       return [
-        ...protectedSources,
+        core,
         ...saved.filter(
-          (item) => !protectedSources.some((base) => base[1] === item[1]),
+          (item, index, all) =>
+            item[1] !== CORE_SOURCE_NAME &&
+            all.findIndex((candidate) => candidate[1] === item[1]) === index,
         ),
       ];
     } catch {
-      return protectedSources;
+      return defaultSources;
     }
   });
   const [appliedSources, setAppliedSources] = useState<string[]>(() => {
-    if (typeof window === "undefined")
-      return protectedSources.map((source) => source[1]);
+    if (typeof window === "undefined") return defaultSources.map((source) => source[1]);
     try {
-      return Array.from(
-        new Set([
-          ...protectedSources.map((source) => source[1]),
-          ...(JSON.parse(
-            window.localStorage.getItem("dana-ai-applied-sources") || "[]",
-          ) as string[]),
-        ]),
-      );
+      const raw = window.localStorage.getItem("dana-ai-applied-sources");
+      if (!raw) return defaultSources.map((source) => source[1]);
+      const saved = JSON.parse(raw) as string[];
+      return Array.from(new Set([CORE_SOURCE_NAME, ...saved]));
     } catch {
-      return protectedSources.map((source) => source[1]);
+      return [CORE_SOURCE_NAME];
+    }
+  });
+  const [referenceContents, setReferenceContents] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(window.localStorage.getItem("dana-ai-reference-contents") || "{}") as Record<string, string>;
+    } catch {
+      return {};
     }
   });
   const [voiceovers, setVoiceovers] = useState<Voiceover[]>(() => {
@@ -332,6 +340,14 @@ export default function Home() {
       );
     } catch {}
   }, [appliedSources]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "dana-ai-reference-contents",
+        JSON.stringify(referenceContents),
+      );
+    } catch {}
+  }, [referenceContents]);
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem("dana-ai-transcript-session");
@@ -573,47 +589,73 @@ export default function Home() {
     );
     if (segmentInput.current) segmentInput.current.value = "";
   };
-  const onSources = (files?: FileList | null) => {
+  const onSources = async (files?: FileList | null) => {
     if (!files?.length) return;
-    const additions = Array.from(files).map((file) => {
-      const extension = file.name.split(".").pop()?.toUpperCase() || "FILE";
-      const type =
-        extension === "MP4" || extension === "MOV" || extension === "MKV"
-          ? "Video reference"
-          : "Production reference";
-      return [type, file.name, "Added to knowledge base", extension] as Source;
-    });
-    setLibrarySources((current) => {
-      const merged = [...current, ...additions].filter(
-        (source, index, all) =>
-          all.findIndex((item) => item[1] === source[1]) === index,
-      );
-      return merged;
-    });
+    const incoming = Array.from(files);
+    setProjectMessage(`Indexing ${incoming.length} reference source${incoming.length === 1 ? "" : "s"}…`);
+    const additions: Source[] = [];
+    const indexedContents: Record<string, string> = {};
+    const failures: string[] = [];
+    for (const file of incoming) {
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch("/api/ingest-reference", { method: "POST", body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.ok) {
+          throw new Error(data?.message || `Could not index ${file.name} (HTTP ${response.status}).`);
+        }
+        const extension = String(data.extension || file.name.split(".").pop() || "FILE").toUpperCase();
+        const type = data.kind === "video" ? "Video reference" : "Production reference";
+        additions.push([type, file.name, data.indexed ? "Indexed knowledge source" : "Registered video reference", extension]);
+        if (data.indexed && typeof data.content === "string" && data.content.trim()) {
+          indexedContents[file.name] = data.content;
+        }
+      } catch (error) {
+        failures.push(error instanceof Error ? `${file.name}: ${error.message}` : `${file.name}: indexing failed`);
+      }
+    }
+    if (additions.length) {
+      setLibrarySources((current) => {
+        const incomingNames = new Set(additions.map((source) => source[1]));
+        return [...current.filter((source) => !incomingNames.has(source[1])), ...additions];
+      });
+      setReferenceContents((current) => ({ ...current, ...indexedContents }));
+      setAppliedSources((current) => Array.from(new Set([...current, ...additions.map((source) => source[1]), CORE_SOURCE_NAME])));
+    }
+    setProjectMessage(
+      [
+        additions.length ? `${additions.length} source${additions.length === 1 ? "" : "s"} added and applied. ${Object.keys(indexedContents).length} document${Object.keys(indexedContents).length === 1 ? "" : "s"} indexed into real editorial context.` : "No sources were added.",
+        failures.length ? `Failed: ${failures.join(" · ")}` : "",
+      ].filter(Boolean).join(" "),
+    );
     if (sourceInput.current) sourceInput.current.value = "";
   };
   const applyAllSources = () => {
     const names = librarySources.map((source) => source[1]);
     setAppliedSources(names);
     setProjectMessage(
-      `${names.length} reference sources are now active in this device's project manifest. Protected sources remain retained across updates.`,
+      `${names.length} reference sources are now active in this device's project manifest. The DANA Master Production System remains the only locked core source.`,
     );
   };
   const removeSource = (name: string) => {
-    if (protectedSources.some((source) => source[1] === name)) {
-      setProjectMessage(`Protected source retained: ${name}`);
+    if (name === CORE_SOURCE_NAME) {
+      setProjectMessage("The DANA AI Master Production System is the governing core and cannot be removed.");
       return;
     }
     const source = librarySources.find((item) => item[1] === name);
     if (!source) return;
-    if (
-      !window.confirm(
-        `Remove “${name}” from the reference library?\n\nThis also removes it from the active project context.`,
-      )
-    )
-      return;
+    if (!window.confirm(`Remove “${name}” from the reference library?
+
+This also removes it from the active project context.`)) return;
     setLibrarySources((current) => current.filter((item) => item[1] !== name));
     setAppliedSources((current) => current.filter((item) => item !== name));
+    setReferenceContents((current) => {
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+    setProjectMessage(`Removed ${name} from the library and active editorial context.`);
   };
   // Retained as an explicit manual fallback for future native-worker recovery.
   // The production path now uses direct Gemini instead of browser re-encoding.
@@ -1209,6 +1251,11 @@ export default function Home() {
           tone: voiceoverTone,
           context: buildReferenceBrief(appliedSources),
           appliedSources,
+          referenceContents: Object.fromEntries(
+            appliedSources
+              .filter((name) => Boolean(referenceContents[name]))
+              .map((name) => [name, referenceContents[name]]),
+          ),
           finalRuntimeSeconds: effectiveRuntimeSeconds,
         }),
       });
@@ -1829,6 +1876,9 @@ export default function Home() {
               <div className="source-list">
                 {librarySources.map(([type, name, , ext]) => {
                   const isApplied = appliedSources.includes(name);
+                  const isCore = name === CORE_SOURCE_NAME;
+                  const isVideo = ["MP4", "MOV", "MKV", "WEBM", "AVI", "M4V"].includes(ext);
+                  const isIndexed = Boolean(referenceContents[name]);
                   return (
                     <div
                       className={
@@ -1843,9 +1893,13 @@ export default function Home() {
                         <b>{name}</b>
                         <small>
                           {type} ·{" "}
-                          {isApplied
-                            ? "Active in current project"
-                            : "Uploaded · not yet applied"}
+                          {isCore
+                            ? "Core · locked governing source"
+                            : isVideo
+                              ? isApplied ? "Video reference · applied" : "Video reference · pending"
+                              : isIndexed
+                                ? isApplied ? "Indexed · applied to project" : "Indexed · pending"
+                                : "Needs indexing · add the file again"}
                         </small>
                       </div>
                       <span
@@ -1853,15 +1907,17 @@ export default function Home() {
                           isApplied ? "source-check" : "source-pending"
                         }
                       >
-                        {isApplied ? "✓ Applied" : "Pending"}
+                        {isCore ? "● Core" : isApplied ? isIndexed || isVideo ? "✓ Applied" : "Re-index" : "Pending"}
                       </span>
                       <button
                         type="button"
                         className="remove-source"
                         onClick={() => removeSource(name)}
-                        aria-label={`Remove ${name}`}
+                        aria-label={isCore ? `${name} is the locked core source` : `Remove ${name}`}
+                        disabled={isCore}
+                        title={isCore ? "Core production system cannot be removed" : "Remove source"}
                       >
-                        Remove
+                        {isCore ? "Core" : "Remove"}
                       </button>
                     </div>
                   );
@@ -2037,7 +2093,9 @@ export default function Home() {
                 >
                   {voiceoverStatus === "generating"
                     ? "Writing the first draft…"
-                    : "Write voice-over draft"}
+                    : voiceoverTone === "Lepers Standard · premium observational comedy"
+                      ? "Generate Lepers production package"
+                      : "Write voice-over draft"}
                 </button>
                 <button
                   className="ghost-btn"

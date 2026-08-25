@@ -22,6 +22,17 @@ const RATIO_REFERENCE_SOURCES = [
   "Ieva Janiševa · Season 3",
 ];
 
+const FIFTH_DINER_EDITORIAL_RULES = `
+PIEKTĀ VAKARIŅOTĀJA PRINCIPS — MANDATORY CHANNEL RULE
+- The narrator is the piektā vakariņotāja: present in the content, with a point of view and a recognisable editorial personality.
+- The narrator adds a second layer by articulating what the viewer is likely thinking when watching the scene, but with wit, intelligence and restraint.
+- The narrator may tease, gently pull someone's leg, sharpen a contradiction or say the socially obvious thing the room leaves unsaid.
+- The narrator is not merely an observer and must not collapse into empty reactions such as “hmm…”, “jā…”, “traki…”, “nu gan…” or similar filler.
+- Every VO cue must contain an editorial proposition: opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought.
+- Humour targets the situation, contradiction or behaviour, never a person's dignity. No brutal insults, humiliation or contempt.
+- The selected tone changes HOW this fifth diner speaks; it never removes the fifth diner's active point of view or added-value function.
+`.trim();
+
 const TONE_PROFILES: Record<string, string> = {
   [DEFAULT_TONE]:
     "LEPERS STANDARD. Premium Latvian observational reality-TV narration: warm, intelligent, dryly amused, character-focused and lightly mischievous. Build humour from the gap between intention, words and what the viewer can see. Use understatement, precise observation, awkward pauses, reactions, delayed punchlines, unexpected comparisons, gentle sarcasm and callbacks. Never humiliate participants, never invent facts, never describe obvious actions, and never copy wording from references.",
@@ -105,6 +116,29 @@ function ratioMetrics(text: string, finalRuntimeSeconds: number) {
   };
 }
 
+function isLowValueObserverCue(text: string) {
+  const normalized = String(text || "")
+    .replace(/^\s*\[\d{1,2}:\d{2}:\d{2}\]\s+VO:\s*/i, "")
+    .toLocaleLowerCase("lv-LV")
+    .replace(/[.…!?;,:'"“”‘’()\-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return true;
+  const emptyObserverReactions = new Set([
+    "hmm",
+    "hm",
+    "jā",
+    "nu jā",
+    "traki",
+    "nu gan",
+    "oho",
+    "ak vai",
+    "interesanti",
+    "nu ko",
+  ]);
+  return emptyObserverReactions.has(normalized);
+}
+
 function voiceoverQualityMetrics(text: string) {
   const lines = String(text || "")
     .split(/\r?\n/)
@@ -118,11 +152,19 @@ function voiceoverQualityMetrics(text: string) {
   );
   const oversizedCues = cueWordCounts.filter((count) => count > 55).length;
   const cueCount = cueLines.length;
-  const formatPasses = cueCount > 0 && nonCueLines.length === 0 && oversizedCues === 0;
+  const lowValueObserverCues = cueLines.filter((line) => isLowValueObserverCue(line)).length;
+  const fifthDinerPasses = cueCount > 0 && lowValueObserverCues === 0;
+  const formatPasses =
+    cueCount > 0 &&
+    nonCueLines.length === 0 &&
+    oversizedCues === 0 &&
+    fifthDinerPasses;
   return {
     cueCount,
     nonCueLines: nonCueLines.length,
     oversizedCues,
+    lowValueObserverCues,
+    fifthDinerPasses,
     maxCueWords: cueWordCounts.length ? Math.max(...cueWordCounts) : 0,
     formatPasses,
   };
@@ -216,17 +258,30 @@ function lepersPackageQualityMetrics(text: string) {
   const section = extractVoiceoverMasterSection(text);
   const tableHeaderPasses = /\|\s*Laiks\s*\|\s*Funkcija\s*\|\s*GALA VO TEKSTS\s*\|\s*Izpildījums \/ montāža\s*\|/i.test(section);
   const spoken = extractVoiceoverMasterText(text);
+  const masterCueTexts = spoken
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const cueCount = section
     .split(/\r?\n/)
     .filter((line) => /^\s*\|\s*\d{1,2}:\d{2}(?::\d{2})?\s*\|/.test(line)).length;
+  const lowValueObserverCues = masterCueTexts.filter((cue) => isLowValueObserverCue(cue)).length;
+  const fifthDinerPasses = cueCount > 0 && lowValueObserverCues === 0;
   return {
     cueCount,
     nonCueLines: 0,
     oversizedCues: 0,
+    lowValueObserverCues,
+    fifthDinerPasses,
     maxCueWords: 0,
     missingSections,
     tableHeaderPasses,
-    formatPasses: missingSections.length === 0 && tableHeaderPasses && cueCount >= 4 && spoken.length > 0,
+    formatPasses:
+      missingSections.length === 0 &&
+      tableHeaderPasses &&
+      cueCount >= 4 &&
+      spoken.length > 0 &&
+      fifthDinerPasses,
   };
 }
 
@@ -266,6 +321,8 @@ function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
 
+${FIFTH_DINER_EDITORIAL_RULES}
+
 ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`;
     const user = `Create the COMPLETE Lepers Standard production package for the CURRENT transcript, not merely a voice-over list. Follow the canonical section order and tables exactly. Match the Rihards Lepers reference in depth, rhythm, character insight, intelligent humour, decisive edit recommendations, VO delivery notes, teasers, risk control and final producer judgement.
 
@@ -288,6 +345,8 @@ ${body.transcript}`;
 
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
+
+${FIFTH_DINER_EDITORIAL_RULES}
 The selected tone is mandatory: it must materially change rhythm, vocabulary, comic pressure, warmth, irony and sentence shape while all factual constraints remain unchanged.`;
   const user = `Create the final Latvian TV voice-over for this scene.
 
@@ -299,6 +358,7 @@ EDITORIAL METHOD — FOLLOW IN THIS ORDER:
 5. Format EVERY intervention on one line exactly as: [HH:MM:SS] VO: <one or two broadcast-ready sentences>. No headings, no prose paragraphs, no commentary outside VO cues.
 6. Keep each cue concise — normally 8-45 spoken words and never more than 55.
 7. Match the SELECTED TONE exactly. Tone changes in the UI must produce a recognisably different editorial voice without changing verified facts.
+8. Act as the fifth dinner guest, not a neutral observer: every cue must carry a point of view or added editorial layer, often saying with wit what the viewer is likely thinking. Never use empty reaction VO such as “hmm…”, “jā…”, “traki…” or “nu gan…”.
 
 VOICE-OVER AMOUNT STANDARD:
 Final runtime: ${Math.round(finalRuntimeSeconds)} seconds.
@@ -609,11 +669,11 @@ export async function GET(request: Request) {
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
       const lepersCorrection = isLepersTone(correctionTone);
       const correctionSystem = lepersCorrection
-        ? `You are DANA AI's final Latvian executive story editor. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
-        : `You are DANA AI's final Latvian television voice-over editor. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} The selected tone must remain clearly recognisable after revision.`;
+        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        : `You are DANA AI's final Latvian television voice-over editor and fifth diner. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} The selected tone must remain clearly recognisable after revision.`;
       const correctionUser = lepersCorrection
-        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
-        : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
+        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
+        : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Every cue must contain opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought; remove empty “hmm”, “jā”, “traki”, “nu gan” reactions. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
       const correction = await createBackgroundResponse({
         apiKey,
         model: FALLBACK_VOICEOVER_MODEL,

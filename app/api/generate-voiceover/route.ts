@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
+import { LEPERS_PRODUCTION_PACKAGE_CONTRACT, LEPERS_REQUIRED_SECTIONS } from "../../lib/lepers-standard";
 
 export const maxDuration = 60;
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
-const REQUIRED_REFERENCE_COUNT = 7;
 const VOICEOVER_RATIO_TARGET = 1 / 6;
 const VOICEOVER_RATIO_TOLERANCE = 0.005;
 const VOICEOVER_WPM = 130;
@@ -62,6 +62,7 @@ type VoiceoverInput = {
   context?: string;
   appliedSources?: string[];
   finalRuntimeSeconds?: number;
+  referenceContents?: Record<string, string>;
 };
 
 function spokenWordCount(text: string) {
@@ -175,12 +176,142 @@ function wordTargets(finalRuntimeSeconds: number) {
   };
 }
 
+function isLepersTone(tone: string) {
+  return tone === DEFAULT_TONE;
+}
+
+function extractVoiceoverMasterSection(text: string) {
+  const source = String(text || "");
+  const start = source.search(/(?:^|\n)#{0,3}\s*4\.\s*VO MASTER\b/i);
+  if (start < 0) return "";
+  const rest = source.slice(start);
+  const next = rest.search(/\n#{0,3}\s*5\.\s*Teaseri/i);
+  return next > 0 ? rest.slice(0, next) : rest;
+}
+
+function extractVoiceoverMasterText(text: string) {
+  const section = extractVoiceoverMasterSection(text);
+  if (!section) return "";
+  return section
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|/.test(line))
+    .map((line) => line.split("|").map((cell) => cell.trim()))
+    .filter((cells) => cells.length >= 6)
+    .map((cells) => cells[3] || "")
+    .filter(
+      (cell) =>
+        cell &&
+        !/GALA VO TEKSTS/i.test(cell) &&
+        !/^:?-{3,}:?$/.test(cell.replace(/\s/g, "")),
+    )
+    .join("\n")
+    .trim();
+}
+
+function lepersPackageQualityMetrics(text: string) {
+  const missingSections = LEPERS_REQUIRED_SECTIONS.filter((heading) => !String(text || "").includes(heading));
+  const section = extractVoiceoverMasterSection(text);
+  const tableHeaderPasses = /\|\s*Laiks\s*\|\s*Funkcija\s*\|\s*GALA VO TEKSTS\s*\|\s*Izpildījums \/ montāža\s*\|/i.test(section);
+  const spoken = extractVoiceoverMasterText(text);
+  const cueCount = section
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|\s*\d{1,2}:\d{2}(?::\d{2})?\s*\|/.test(line)).length;
+  return {
+    cueCount,
+    nonCueLines: 0,
+    oversizedCues: 0,
+    maxCueWords: 0,
+    missingSections,
+    tableHeaderPasses,
+    formatPasses: missingSections.length === 0 && tableHeaderPasses && cueCount >= 4 && spoken.length > 0,
+  };
+}
+
+function qualityMetricsForOutput(text: string, tone: string) {
+  return isLepersTone(tone) ? lepersPackageQualityMetrics(text) : voiceoverQualityMetrics(text);
+}
+
+function ratioMetricsForOutput(text: string, finalRuntimeSeconds: number, tone: string) {
+  return isLepersTone(tone)
+    ? ratioMetrics(extractVoiceoverMasterText(text), finalRuntimeSeconds)
+    : ratioMetrics(text, finalRuntimeSeconds);
+}
+
+function referenceContentBlock(body: VoiceoverInput) {
+  const contents = body.referenceContents || {};
+  const applied = new Set(Array.isArray(body.appliedSources) ? body.appliedSources : []);
+  let remaining = 140_000;
+  const blocks: string[] = [];
+  for (const [name, raw] of Object.entries(contents)) {
+    if (!applied.has(name) || !String(raw || "").trim() || remaining <= 0) continue;
+    const clean = String(raw).trim();
+    const excerpt = clean.slice(0, Math.min(60_000, remaining));
+    remaining -= excerpt.length;
+    blocks.push(`REFERENCE: ${name}\n${excerpt}`);
+  }
+  return blocks.length ? blocks.join("\n\n---\n\n") : "No extracted reference document text was supplied in this run.";
+}
+
 function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
   const selectedTone = String(body.tone || DEFAULT_TONE);
   const toneProfile = toneProfileFor(selectedTone);
   const { targetWords, lowerWords, upperWords } = wordTargets(finalRuntimeSeconds);
-  const system = `You are DANA AI, a senior Latvian television story editor and voice-over writer for Gandrīz ideālas vakariņas. Write fluent, natural, broadcast-ready Latvian. Your task is SELECTIVE NARRATION, not transcript summarisation. Every line must add editorial value that the viewer cannot already get directly from picture or dialogue. Never invent facts. Never imitate wording from references. Protect participant dignity.\n\nSELECTED TONE: ${selectedTone}\n${toneProfile}\nThe selected tone is mandatory: it must materially change rhythm, vocabulary, comic pressure, warmth, irony and sentence shape while all factual constraints remain unchanged.`;
-  const user = `Create the final Latvian TV voice-over for this scene.\n\nEDITORIAL METHOD — FOLLOW IN THIS ORDER:\n1. Read the transcript only as source evidence. Do not recap the scene.\n2. Select only moments where a narrator intervention adds contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation.\n3. Do not list participant biographies, paraphrase audible dialogue, explain obvious actions, or narrate information the audience already understands.\n4. Leave silence where narration adds nothing. The narrator is selective, not continuous.\n5. Format EVERY intervention on one line exactly as: [HH:MM:SS] VO: <one or two broadcast-ready sentences>. No headings, no prose paragraphs, no commentary outside VO cues.\n6. Keep each cue concise — normally 8-45 spoken words and never more than 55.\n7. Match the SELECTED TONE exactly. Tone changes in the UI must produce a recognisably different editorial voice without changing verified facts.\n\nVOICE-OVER AMOUNT STANDARD:\nFinal runtime: ${Math.round(finalRuntimeSeconds)} seconds.\nTarget ≈ ${targetWords} spoken words. Preferred standard band: ${lowerWords}-${upperWords} words (16.17%-17.17% of runtime at 130 Latvian words/minute). Aim to fit this standard by choosing enough legitimate editorial beats. Never exceed ${upperWords} spoken words. If the source does not contain enough legitimate beats, return a shorter selective script rather than padding with recap, biography, dialogue paraphrase or obvious action.\n\nEditorial request: ${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}\n\nApplied reference calibration: ${RATIO_REFERENCE_SOURCES.join(", ")}.\nApplied production context:\n${body.context || "No reference manifest supplied."}\n\nSOURCE TRANSCRIPT:\n${body.transcript}`;
+  const references = referenceContentBlock(body);
+  if (isLepersTone(selectedTone)) {
+    const system = `You are DANA AI, a senior Latvian executive television producer, story editor and voice-over writer for Gandrīz ideālas vakariņas. The Rihards Lepers production-analysis reference is the canonical editorial benchmark for this mode. Write fluent, natural, production-ready Latvian. Never invent facts and never transfer factual details from a reference episode into the current episode.
+
+SELECTED TONE: ${selectedTone}
+${toneProfile}
+
+${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`;
+    const user = `Create the COMPLETE Lepers Standard production package for the CURRENT transcript, not merely a voice-over list. Follow the canonical section order and tables exactly. Match the Rihards Lepers reference in depth, rhythm, character insight, intelligent humour, decisive edit recommendations, VO delivery notes, teasers, risk control and final producer judgement.
+
+VOICE-OVER AMOUNT CONTROL: final runtime ${Math.round(finalRuntimeSeconds)} seconds; target approximately ${targetWords} spoken VO words; preferred band ${lowerWords}-${upperWords}. Count ONLY the GALA VO TEKSTS column in section 4. Never count analysis, production notes, promos or other sections. Never exceed ${upperWords}; never pad with obvious action, biography or dialogue paraphrase simply to reach the target.
+
+Editorial request: ${body.prompt || "Use the Rihards Lepers production standard as the benchmark for this scene."}
+
+APPLIED REFERENCE MANIFEST:
+${body.context || "No reference manifest supplied."}
+
+APPLIED REFERENCE CONTENT:
+${references}
+
+CURRENT SOURCE TRANSCRIPT — THIS IS THE FACTUAL SOURCE OF TRUTH:
+${body.transcript}`;
+    return { selectedTone, system, user, targetWords, lowerWords, upperWords };
+  }
+
+  const system = `You are DANA AI, a senior Latvian television story editor and voice-over writer for Gandrīz ideālas vakariņas. Write fluent, natural, broadcast-ready Latvian. Your task is SELECTIVE NARRATION, not transcript summarisation. Every line must add editorial value that the viewer cannot already get directly from picture or dialogue. Never invent facts. Never imitate wording from references. Protect participant dignity.
+
+SELECTED TONE: ${selectedTone}
+${toneProfile}
+The selected tone is mandatory: it must materially change rhythm, vocabulary, comic pressure, warmth, irony and sentence shape while all factual constraints remain unchanged.`;
+  const user = `Create the final Latvian TV voice-over for this scene.
+
+EDITORIAL METHOD — FOLLOW IN THIS ORDER:
+1. Read the transcript only as source evidence. Do not recap the scene.
+2. Select only moments where a narrator intervention adds contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation.
+3. Do not list participant biographies, paraphrase audible dialogue, explain obvious actions, or narrate information the audience already understands.
+4. Leave silence where narration adds nothing. The narrator is selective, not continuous.
+5. Format EVERY intervention on one line exactly as: [HH:MM:SS] VO: <one or two broadcast-ready sentences>. No headings, no prose paragraphs, no commentary outside VO cues.
+6. Keep each cue concise — normally 8-45 spoken words and never more than 55.
+7. Match the SELECTED TONE exactly. Tone changes in the UI must produce a recognisably different editorial voice without changing verified facts.
+
+VOICE-OVER AMOUNT STANDARD:
+Final runtime: ${Math.round(finalRuntimeSeconds)} seconds.
+Target ≈ ${targetWords} spoken words. Preferred standard band: ${lowerWords}-${upperWords} words (16.17%-17.17% of runtime at 130 Latvian words/minute). Aim to fit this standard by choosing enough legitimate editorial beats. Never exceed ${upperWords} spoken words. If the source does not contain enough legitimate beats, return a shorter selective script rather than padding with recap, biography, dialogue paraphrase or obvious action.
+
+Editorial request: ${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}
+
+Applied reference calibration: ${RATIO_REFERENCE_SOURCES.join(", ")}.
+Applied production context:
+${body.context || "No reference manifest supplied."}
+
+APPLIED REFERENCE CONTENT:
+${references}
+
+SOURCE TRANSCRIPT:
+${body.transcript}`;
   return { selectedTone, system, user, targetWords, lowerWords, upperWords };
 }
 
@@ -223,7 +354,7 @@ async function createBackgroundResponse({
       background: true,
       store: true,
       reasoning: { effort: "medium" },
-      max_output_tokens: 12_000,
+      max_output_tokens: 24_000,
       text: { verbosity: "medium" },
       metadata,
       ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
@@ -305,9 +436,9 @@ export async function POST(request: Request) {
       );
     }
     const appliedSources = Array.isArray(body.appliedSources) ? body.appliedSources : [];
-    if (appliedSources.length < REQUIRED_REFERENCE_COUNT) {
+    if (!appliedSources.includes("DANA AI Master Production System")) {
       return NextResponse.json(
-        { ok: false, message: `Voice-over is blocked until all ${REQUIRED_REFERENCE_COUNT} protected production references are applied.`, requestId },
+        { ok: false, message: "The DANA AI Master Production System must remain applied as the governing editorial source.", requestId },
         { status: 400 },
       );
     }
@@ -350,8 +481,8 @@ export async function POST(request: Request) {
           { status: 502 },
         );
       }
-      const metrics = ratioMetrics(text, finalRuntimeSeconds);
-      const quality = voiceoverQualityMetrics(text);
+      const metrics = ratioMetricsForOutput(text, finalRuntimeSeconds, selectedTone);
+      const quality = qualityMetricsForOutput(text, selectedTone);
       if (!quality.formatPasses) {
         return NextResponse.json(
           {
@@ -455,12 +586,12 @@ export async function GET(request: Request) {
 
     const metadata = data.metadata || {};
     const finalRuntimeSeconds = Number(metadata.dana_runtime_seconds || 0);
-    const metrics = ratioMetrics(text, finalRuntimeSeconds);
-    const quality = voiceoverQualityMetrics(text);
     const correctionAttempt = Number(metadata.dana_correction_attempt || 0);
     const phase = metadata.dana_phase || "initial";
     const correctionTone = metadata.dana_tone || DEFAULT_TONE;
     const correctionToneProfile = toneProfileFor(correctionTone);
+    const metrics = ratioMetricsForOutput(text, finalRuntimeSeconds, correctionTone);
+    const quality = qualityMetricsForOutput(text, correctionTone);
     const needsCorrection =
       !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard";
 
@@ -473,8 +604,13 @@ export async function GET(request: Request) {
         : metrics.standardStatus === "under-standard"
           ? `The draft is below the preferred ${lowerWords}-${upperWords} word band. Using the ORIGINAL SOURCE TRANSCRIPT from the previous response context, add only additional legitimate narrator interventions where the narrator contributes new editorial value. If there are no more legitimate beats, keep the script shorter rather than padding it.`
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
-      const correctionSystem = `You are DANA AI's final Latvian television voice-over editor. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} The selected tone must remain clearly recognisable after revision.`;
-      const correctionUser = `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
+      const lepersCorrection = isLepersTone(correctionTone);
+      const correctionSystem = lepersCorrection
+        ? `You are DANA AI's final Latvian executive story editor. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        : `You are DANA AI's final Latvian television voice-over editor. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} The selected tone must remain clearly recognisable after revision.`;
+      const correctionUser = lepersCorrection
+        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
+        : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
       const correction = await createBackgroundResponse({
         apiKey,
         model: FALLBACK_VOICEOVER_MODEL,
@@ -501,7 +637,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          message: `DANA AI rejected the generated text because it still resembled transcript/summary prose instead of selective TV voice-over. Reference: ${requestId}`,
+          message: `DANA AI rejected the generated output because it did not satisfy the selected editorial format contract. Reference: ${requestId}`,
           requestId,
         },
         { status: 502 },

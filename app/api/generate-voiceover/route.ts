@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
 import { LEPERS_PRODUCTION_PACKAGE_CONTRACT, LEPERS_REQUIRED_SECTIONS } from "../../lib/lepers-standard";
+import { LEPERS_GOLDEN_MASTER_FINGERPRINT, LEPERS_GOLDEN_MASTER_NAME, LEPERS_GOLDEN_MASTER_THRESHOLD, scoreLepersGoldenMaster } from "../../lib/lepers-golden-master";
 
 export const maxDuration = 60;
 
@@ -14,7 +15,7 @@ const FALLBACK_VOICEOVER_MODEL = "gpt-5.6-terra";
 const LEGACY_VOICEOVER_MODEL = "gpt-5.6-terra";
 const DEFAULT_TONE = "Lepers Standard · premium observational comedy";
 const TAILORED_TONE = "Tailored · custom editorial direction";
-const MAX_BACKGROUND_CORRECTIONS = 2;
+const MAX_BACKGROUND_CORRECTIONS = 3;
 
 const RATIO_REFERENCE_SOURCES = [
   "Come Dine With Me.mp4",
@@ -335,6 +336,10 @@ ${FIFTH_DINER_EDITORIAL_RULES}
 
 ${GLOBAL_SCENE_DIRECTIVE_RULES}
 
+GOLDEN MASTER CONFORMANCE — LOCKED BENCHMARK
+${LEPERS_GOLDEN_MASTER_NAME}. Variation is allowed in content, never in production standard. Match the reference fingerprint before returning the package: 16-page analytical depth, seven-act dramaturgical logic when source length supports it, five teaser beats, 30s + 15s promo, four social hooks, fifth-diner humour, concise cue rhythm, decisive editor-facing recommendations, exact tables and the locked VO ratio. Minimum conformance score: ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100.
+Fingerprint: ${JSON.stringify(LEPERS_GOLDEN_MASTER_FINGERPRINT)}
+
 ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`;
     const user = `Create the COMPLETE Lepers Standard production package for the CURRENT transcript, not merely a voice-over list. Follow the canonical section order and tables exactly. Match the Rihards Lepers reference in depth, rhythm, character insight, intelligent humour, decisive edit recommendations, VO delivery notes, teasers, risk control and final producer judgement.
 
@@ -564,6 +569,7 @@ export async function POST(request: Request) {
       }
       const metrics = ratioMetricsForOutput(text, finalRuntimeSeconds, selectedTone);
       const quality = qualityMetricsForOutput(text, selectedTone);
+      const goldenMaster = isLepersTone(selectedTone) ? scoreLepersGoldenMaster(text, finalRuntimeSeconds) : null;
       if (!quality.formatPasses) {
         return NextResponse.json(
           {
@@ -581,6 +587,7 @@ export async function POST(request: Request) {
         text,
         metrics,
         quality,
+        goldenMaster,
         ratioWarning: !metrics.passes,
         tone: selectedTone,
         requestId,
@@ -673,8 +680,9 @@ export async function GET(request: Request) {
     const correctionToneProfile = toneProfileFor(correctionTone);
     const metrics = ratioMetricsForOutput(text, finalRuntimeSeconds, correctionTone);
     const quality = qualityMetricsForOutput(text, correctionTone);
+    const goldenMaster = isLepersTone(correctionTone) ? scoreLepersGoldenMaster(text, finalRuntimeSeconds) : null;
     const needsCorrection =
-      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard";
+      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard" || Boolean(goldenMaster && goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD);
 
     if (needsCorrection && correctionAttempt < MAX_BACKGROUND_CORRECTIONS) {
       const lowerWords = Number(metadata.dana_lower_words || 0);
@@ -687,10 +695,10 @@ export async function GET(request: Request) {
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
       const lepersCorrection = isLepersTone(correctionTone);
       const correctionSystem = lepersCorrection
-        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
         : `You are DANA AI's final Latvian television voice-over editor and fifth diner. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} The selected tone must remain clearly recognisable after revision.`;
       const correctionUser = lepersCorrection
-        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth.\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
+        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
         : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Every cue must contain opinion, interpretation, contrast, anticipation, callback, comic framing or a viewer-perspective thought; remove empty “hmm”, “jā”, “traki”, “nu gan” reactions. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
       const correction = await createBackgroundResponse({
         apiKey,
@@ -724,6 +732,17 @@ export async function GET(request: Request) {
         { status: 502 },
       );
     }
+    if (goldenMaster && goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: `DANA AI rejected the Lepers package because Golden Master conformance remained ${goldenMaster.score}/100 after automatic revision; minimum is ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. Reference: ${requestId}`,
+          goldenMaster,
+          requestId,
+        },
+        { status: 502 },
+      );
+    }
     if (metrics.overLimit) {
       return NextResponse.json(
         {
@@ -744,6 +763,7 @@ export async function GET(request: Request) {
       text,
       metrics,
       quality,
+      goldenMaster,
       ratioWarning: !metrics.passes,
       tone: correctionTone,
       requestId,

@@ -134,6 +134,7 @@ const sourceApplications: Record<string, string> = {
 
 const TAILORED_TONE = "Tailored · custom editorial direction";
 const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
+const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
   [DEFAULT_EDITORIAL_TONE]:
@@ -2230,7 +2231,7 @@ This also removes it from the active project context.`)) return;
               </div>
               <div className="voiceover-ratio-card" aria-label="Mandatory voice-over ratio">
                 <div>
-                  <b>Mandatory format ratio · 16.67%</b>
+                  <b>Mandatory format ratio · 16.67%</b><small>Golden Master Match: Lepers packages are automatically measured against the locked 10/10 benchmark and revised until they reach at least 95/100 before release.</small>
                   <small>
                     Calibrated against the three applied episode references: British original, Ainārs Ašaks and Ieva Janiševa. DANA AI monitors the 16.67% target and automatically corrects toward the 16.17%–17.17% standard, but it will not pad a scene with recap or obvious narration just to hit the number.
                   </small>
@@ -2291,7 +2292,7 @@ This also removes it from the active project context.`)) return;
                   {voiceoverStatus === "generating"
                     ? "Writing the first draft…"
                     : voiceoverTone === "Lepers Standard · premium observational comedy"
-                      ? "Generate Lepers production package"
+                      ? "Generate Lepers Golden Master package"
                       : "Write voice-over draft"}
                 </button>
                 <button

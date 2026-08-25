@@ -144,6 +144,8 @@ const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy"
 const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
 const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.';
 const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest: warm, opinionated, lightly ironic and observant. Say what the viewer is thinking, notice details others miss, use internal dialogue, contradictions, provocation and callbacks when earned. Every VO must add story, humour, tension, character or emotion—never generic description or empty reactions. Protect strong dialogue and silence, never invent facts or humiliate participants, and keep VO selective near the 16.67% target without padding.';
+const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-fifth-diner-v2";
+const EDITORIAL_BRIEF_VERSION_KEY = "dana-ai-editorial-brief-version";
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
   [DEFAULT_EDITORIAL_TONE]: DEFAULT_LEPERS_EDITORIAL_BRIEF,
@@ -372,6 +374,29 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
+  }, []);
+  useEffect(() => {
+    try {
+      const savedVersion = window.localStorage.getItem(EDITORIAL_BRIEF_VERSION_KEY);
+      if (savedVersion !== EDITORIAL_BRIEF_SCHEMA_VERSION) {
+        setVoiceoverBriefs((current) => {
+          const migrated = {
+            ...current,
+            [DEFAULT_EDITORIAL_TONE]: DEFAULT_LEPERS_EDITORIAL_BRIEF,
+          };
+          window.localStorage.setItem(
+            "dana-ai-editorial-briefs",
+            JSON.stringify(migrated),
+          );
+          return migrated;
+        });
+        setVoiceoverPrompt(DEFAULT_LEPERS_EDITORIAL_BRIEF);
+        window.localStorage.setItem(
+          EDITORIAL_BRIEF_VERSION_KEY,
+          EDITORIAL_BRIEF_SCHEMA_VERSION,
+        );
+      }
+    } catch {}
   }, []);
   useEffect(() => {
     try {

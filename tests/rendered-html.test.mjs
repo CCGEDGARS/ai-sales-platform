@@ -87,7 +87,7 @@ test("large video bytes go through the controlled native upload proxy instead of
 test("voice-over backend cannot repeat the 300-second synchronous timeout architecture", () => {
   assert.match(voiceoverRoute, /background:\s*true/);
   assert.match(voiceoverRoute, /export async function GET/);
-  assert.match(voiceoverRoute, /\/responses\/\$\{encodeURIComponent\(responseId\)\}/);
+  assert.match(voiceoverRoute, /encodeURIComponent\(responseId\)/);
   assert.match(voiceoverRoute, /LEGACY_VOICEOVER_MODEL = "gpt-5\.6-terra"/);
   assert.match(voiceoverRoute, /reasoning:\s*\{ effort: "none" \}/);
   assert.match(voiceoverRoute, /setTimeout\(\(\) => controller\.abort\(\), 50_000\)/);

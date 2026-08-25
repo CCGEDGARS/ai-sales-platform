@@ -40,8 +40,9 @@ test("legacy synchronous Lepers generation cannot bypass the Second Story gate",
   assert.match(legacyBlock, /Refresh|refresh/);
 });
 
-test("the visible default Editorial brief tells DANA to create a Second Story", () => {
+test("the visible default Editorial brief tells DANA to create a Second Story in WOW mode", () => {
   assert.match(page, /Second Story/i);
-  assert.match(page, /create|veido|build/i);
-  assert.match(page, /EDITORIAL_BRIEF_SCHEMA_VERSION\s*=\s*"2026-08-25-visual-evidence-v4"/);
+  assert.match(page, /WOW mode/i);
+  assert.match(page, /do not submit the first reasonable idea/i);
+  assert.match(page, /EDITORIAL_BRIEF_SCHEMA_VERSION\s*=\s*"2026-08-25-wow-creative-room-v5"/);
 });

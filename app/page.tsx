@@ -143,8 +143,8 @@ const TAILORED_TONE = "Tailored · custom editorial direction";
 const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
 const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
 const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.';
-const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest: warm, opinionated, lightly ironic and observant. Say what the viewer is thinking, notice details others miss, use internal dialogue, contradictions, provocation and callbacks when earned. Every VO must add story, humour, tension, character or emotion—never generic description or empty reactions. Protect strong dialogue and silence, never invent facts or humiliate participants, and keep VO selective near the 16.67% target without padding.';
-const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-fifth-diner-v2";
+const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest and editorial co-author: do not just reflect the footage—create a bold Second Story from verified reality using new angles, metaphors, hypotheses, predictions, contradictions and callbacks. Add story, humour, tension, character or emotion; never invent facts, motives or events, humiliate participants, or pad VO. Keep VO selective near 16.67%.';
+const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-second-story-v3";
 const EDITORIAL_BRIEF_VERSION_KEY = "dana-ai-editorial-brief-version";
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
@@ -2298,7 +2298,7 @@ This also removes it from the active project context.`)) return;
                 <span>✦</span>
                 <div>
                   <b>GPT-5.6 Sol · active editorial model</b>
-                  <small>Primary selective voice-over writer. GPT-5.6 Terra is the automatic fallback and final quality/ratio correction model.</small>
+                  <small>Primary writer and precision-correction model. GPT-5.6 Terra is used only as the automatic fallback when Sol is unavailable.</small>
                 </div>
               </div>
               <div className="voiceover-controls">

@@ -156,6 +156,9 @@ const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian packag
 const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive: do not submit the first reasonable idea. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Fifth Dinner Guest VO must surprise, not reflect. Never invent reality or humiliate participants; keep VO selective near 16.67%.';
 const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-wow-creative-room-v5";
 const EDITORIAL_BRIEF_VERSION_KEY = "dana-ai-editorial-brief-version";
+const MAX_VOICEOVER_POLL_COUNT = 2160; // 90 minutes at 2.5s; pending job remains resumable after this window.
+const VOICEOVER_LONG_RUNNING_POLL_COUNT = 360; // 15 minutes.
+const VOICEOVER_POLL_INTERVAL_MS = 2500;
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
   [DEFAULT_EDITORIAL_TONE]: DEFAULT_LEPERS_EDITORIAL_BRIEF,
@@ -1454,11 +1457,10 @@ This also removes it from the active project context.`)) return;
     responseId: string,
     pollCount = 0,
   ): Promise<void> => {
-    if (pollCount > 360) {
-      window.localStorage.removeItem("dana-ai-pending-voiceover");
-      setVoiceoverStatus("failed");
+    if (pollCount > MAX_VOICEOVER_POLL_COUNT) {
+      setVoiceoverStatus("generating");
       setVoiceoverMessage(
-        "OpenAI is still processing after 15 minutes. The job was left safely in OpenAI; press Write voice-over draft to start a new run if needed.",
+        "DANA AI is still working on this background job. The exact OpenAI response ID is preserved on this device; reload the page at any time and DANA will resume checking the same run automatically. Do not start a duplicate run unless you intentionally want to replace it.",
       );
       return;
     }
@@ -1502,24 +1504,39 @@ This also removes it from the active project context.`)) return;
         window.localStorage.setItem("dana-ai-pending-voiceover", nextId);
         setVoiceoverStatus("generating");
         setVoiceoverMessage(
-          result.phase === "correction"
-            ? "DANA AI is checking selective VO structure, the selected editorial tone and the narration-ratio standard…"
-            : "OpenAI is generating the voice-over in a durable background job. You can keep this page open while it finishes…",
+          result.phase === "output-expansion"
+            ? "DANA AI is rebuilding the complete WOW package with the expanded output budget so no section is truncated. The same source context is preserved…"
+            : result.phase === "correction"
+              ? "DANA AI is running the Golden Master / WOW correction pass: structure, freshness, Fifth Dinner Guest POV and narration ratio are being checked…"
+              : pollCount >= VOICEOVER_LONG_RUNNING_POLL_COUNT
+                ? "DANA AI is still working on the full WOW package. This is a durable OpenAI background job; the response ID is preserved and the page will keep checking it automatically…"
+                : "OpenAI is generating the voice-over in a durable background job. You can keep this page open while it finishes…",
         );
         window.setTimeout(() => {
           void pollVoiceoverJob(nextId, pollCount + 1);
-        }, 2500);
+        }, VOICEOVER_POLL_INTERVAL_MS);
         return;
       }
       throw new Error(`Unexpected voice-over job status: ${String(result.status || "unknown")}.`);
     } catch (error) {
-      window.localStorage.removeItem("dana-ai-pending-voiceover");
       setVoiceoverStatus("failed");
       setVoiceoverMessage(
-        error instanceof Error ? error.message : "Voice-over generation failed.",
+        `${error instanceof Error ? error.message : "Voice-over job check was interrupted."} The pending OpenAI response ID is preserved; reload the page to resume checking this exact run.`,
       );
     }
   };
+  useEffect(() => {
+    let pendingResponseId = "";
+    try {
+      pendingResponseId = window.localStorage.getItem("dana-ai-pending-voiceover") || "";
+    } catch {}
+    if (!pendingResponseId.startsWith("resp_")) return;
+    setVoiceoverStatus("generating");
+    setVoiceoverMessage(
+      "Restoring the pending DANA AI generation from this device and reconnecting to the same OpenAI background job…",
+    );
+    void pollVoiceoverJob(pendingResponseId);
+  }, []);
   const updateEditorialBrief = (value: string) => {
     setVoiceoverPrompt(value);
     setVoiceoverBriefs((current) => ({ ...current, [voiceoverTone]: value }));

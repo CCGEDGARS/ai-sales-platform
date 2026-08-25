@@ -53,3 +53,21 @@ test("visible editorial brief switches to WOW creative executive producer mode",
 test("primary editorial generation uses high reasoning for creative divergence", () => {
   assert.match(route, /reasoning:\s*\{\s*effort:\s*"high"\s*\}/);
 });
+
+test("legacy Lepers release cannot bypass the WOW Freshness gate", () => {
+  const start = route.indexOf("if (!asyncMode)");
+  const end = route.indexOf("const configuredModel", start);
+  assert.ok(start >= 0 && end > start);
+  const legacyBlock = route.slice(start, end);
+  assert.match(legacyBlock, /creativeFreshness\?\.passes/);
+  assert.match(legacyBlock, /WOW|Freshness/i);
+});
+
+test("correction passes retain Creative Executive Producer rules", () => {
+  const start = route.indexOf("const correctionSystem");
+  const end = route.indexOf("const correctionUser", start);
+  assert.ok(start >= 0 && end > start);
+  const correctionSystem = route.slice(start, end);
+  const occurrences = correctionSystem.match(/CREATIVE_EXECUTIVE_PRODUCER_RULES/g) || [];
+  assert.ok(occurrences.length >= 2, "both Lepers and selective VO correction branches must retain WOW rules");
+});

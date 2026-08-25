@@ -16,6 +16,9 @@ const LEGACY_VOICEOVER_MODEL = "gpt-5.6-terra";
 const DEFAULT_TONE = "Lepers Standard · premium observational comedy";
 const TAILORED_TONE = "Tailored · custom editorial direction";
 const MAX_BACKGROUND_CORRECTIONS = 5;
+const BACKGROUND_MAX_OUTPUT_TOKENS = 64_000;
+const MAX_OUTPUT_RECOVERY_TOKENS = 96_000;
+const MAX_OUTPUT_RECOVERIES = 2;
 
 const RATIO_REFERENCE_SOURCES = [
   "Come Dine With Me.mp4",
@@ -500,11 +503,12 @@ ${body.transcript}`;
   return { selectedTone, system, user, targetWords, lowerWords, upperWords };
 }
 
-function metadataFor(finalRuntimeSeconds: number, tone: string, phase: string, correctionAttempt: number) {
+function metadataFor(finalRuntimeSeconds: number, tone: string, phase: string, correctionAttempt: number, outputRecoveryAttempt = 0) {
   const { targetWords, lowerWords, upperWords } = wordTargets(finalRuntimeSeconds);
   return {
     dana_phase: phase,
     dana_correction_attempt: String(correctionAttempt),
+    dana_output_recovery_attempt: String(outputRecoveryAttempt),
     dana_runtime_seconds: String(Math.round(finalRuntimeSeconds)),
     dana_target_words: String(targetWords),
     dana_lower_words: String(lowerWords),
@@ -520,6 +524,7 @@ async function createBackgroundResponse({
   user,
   metadata,
   previousResponseId,
+  maxOutputTokens = BACKGROUND_MAX_OUTPUT_TOKENS,
 }: {
   apiKey: string;
   model: string;
@@ -527,6 +532,7 @@ async function createBackgroundResponse({
   user: string;
   metadata: Record<string, string>;
   previousResponseId?: string;
+  maxOutputTokens?: number;
 }) {
   const response = await fetch(OPENAI_URL, {
     method: "POST",
@@ -539,7 +545,7 @@ async function createBackgroundResponse({
       background: true,
       store: true,
       reasoning: { effort: "high" },
-      max_output_tokens: 24_000,
+      max_output_tokens: maxOutputTokens,
       text: { verbosity: "medium" },
       metadata,
       ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
@@ -561,12 +567,14 @@ async function createCorrectionResponse({
   user,
   metadata,
   previousResponseId,
+  maxOutputTokens = BACKGROUND_MAX_OUTPUT_TOKENS,
 }: {
   apiKey: string;
   system: string;
   user: string;
   metadata: Record<string, string>;
   previousResponseId: string;
+  maxOutputTokens?: number;
 }) {
   const configuredCorrectionModel = process.env.OPENAI_VOICEOVER_MODEL || PRIMARY_VOICEOVER_MODEL;
   let model = configuredCorrectionModel;
@@ -577,6 +585,7 @@ async function createCorrectionResponse({
     user,
     metadata,
     previousResponseId,
+    maxOutputTokens,
   });
   if (!created.response.ok && modelUnavailable(created.response, created.data) && model !== FALLBACK_VOICEOVER_MODEL) {
     model = FALLBACK_VOICEOVER_MODEL;
@@ -587,6 +596,7 @@ async function createCorrectionResponse({
       user,
       metadata,
       previousResponseId,
+      maxOutputTokens,
     });
   }
   return { ...created, model };
@@ -846,12 +856,54 @@ export async function GET(request: Request) {
       );
     }
 
+    const metadata = data.metadata || {};
+    const finalRuntimeSeconds = Number(metadata.dana_runtime_seconds || 0);
+    const correctionAttempt = Number(metadata.dana_correction_attempt || 0);
+    const outputRecoveryAttempt = Number(metadata.dana_output_recovery_attempt || 0);
+    const phase = metadata.dana_phase || "initial";
+    const correctionTone = metadata.dana_tone || DEFAULT_TONE;
+    const correctionToneProfile = toneProfileFor(correctionTone);
+
     if (data.status === "queued" || data.status === "in_progress") {
-      return NextResponse.json({ ok: true, status: data.status, responseId, phase: data.metadata?.dana_phase || "initial", model: data.model, requestId });
+      return NextResponse.json({ ok: true, status: data.status, responseId, phase, model: data.model, requestId });
     }
+
+    if (data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && outputRecoveryAttempt < MAX_OUTPUT_RECOVERIES) {
+      const lepersRecovery = isLepersTone(correctionTone);
+      const recoverySystem = lepersRecovery
+        ? `You are DANA AI's final Latvian executive story editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling before the complete package was delivered. Regenerate the COMPLETE Lepers Golden Master package from the beginning using the original source context. Preserve verified facts, participant dignity, exact package architecture, Fifth Dinner Guest POV, Second Story, Creative Room / WOW, FORMAT SPICE and Golden Master requirements. Do not continue a truncated fragment. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling. Regenerate the COMPLETE deliverable from the beginning using the original source context; do not continue a truncated fragment. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES}`;
+      const recoveryUser = lepersRecovery
+        ? `OUTPUT EXPANSION RECOVERY ${outputRecoveryAttempt + 1}/${MAX_OUTPUT_RECOVERIES}: Produce the entire nine-part Lepers Golden Master package from the beginning. The previous draft was incomplete only because the token ceiling was reached. Keep the strongest source-grounded creative decisions, but return one complete self-contained package. Do not omit late sections, do not stop after VO MASTER, and do not merely continue from the cutoff.`
+        : `OUTPUT EXPANSION RECOVERY ${outputRecoveryAttempt + 1}/${MAX_OUTPUT_RECOVERIES}: Return the complete final deliverable from the beginning. The previous response was truncated by the output-token ceiling; do not continue from the cutoff.`;
+      const recovery = await createCorrectionResponse({
+        apiKey,
+        system: recoverySystem,
+        user: recoveryUser,
+        metadata: metadataFor(finalRuntimeSeconds, correctionTone, "output-expansion", correctionAttempt, outputRecoveryAttempt + 1),
+        previousResponseId: responseId,
+        maxOutputTokens: MAX_OUTPUT_RECOVERY_TOKENS,
+      });
+      if (recovery.response.ok && recovery.data.id) {
+        return NextResponse.json({
+          ok: true,
+          status: recovery.data.status || "queued",
+          responseId: recovery.data.id,
+          phase: "output-expansion",
+          outputRecoveryAttempt: outputRecoveryAttempt + 1,
+          model: recovery.data.model || recovery.model,
+          tone: correctionTone,
+          requestId,
+        });
+      }
+    }
+
     if (data.status !== "completed") {
+      const statusMessage = data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens"
+        ? "DANA AI could not complete the full package within the expanded output budget. Please regenerate; the source and editorial settings remain intact."
+        : providerError(data, `OpenAI voice-over job ended with status ${data.status || "unknown"}.`);
       return NextResponse.json(
-        { ok: false, message: `${providerError(data, `OpenAI voice-over job ended with status ${data.status || "unknown"}.`)} Reference: ${requestId}`, requestId },
+        { ok: false, message: `${statusMessage} Reference: ${requestId}`, requestId },
         { status: 502 },
       );
     }
@@ -860,13 +912,6 @@ export async function GET(request: Request) {
     if (!text) {
       return NextResponse.json({ ok: false, message: `OpenAI completed the job without usable voice-over text. Reference: ${requestId}`, requestId }, { status: 502 });
     }
-
-    const metadata = data.metadata || {};
-    const finalRuntimeSeconds = Number(metadata.dana_runtime_seconds || 0);
-    const correctionAttempt = Number(metadata.dana_correction_attempt || 0);
-    const phase = metadata.dana_phase || "initial";
-    const correctionTone = metadata.dana_tone || DEFAULT_TONE;
-    const correctionToneProfile = toneProfileFor(correctionTone);
     const metrics = ratioMetricsForOutput(text, finalRuntimeSeconds, correctionTone);
     const quality = qualityMetricsForOutput(text, correctionTone);
     const goldenMaster = isLepersTone(correctionTone) ? scoreLepersGoldenMaster(text, finalRuntimeSeconds) : null;

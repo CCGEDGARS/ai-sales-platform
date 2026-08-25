@@ -5,6 +5,7 @@ on:
     branches: [dana-fifth-diner-vo]
     paths:
       - scripts/apply-fifth-diner-vo.py
+      - tests/fifth-diner-voiceover.test.mjs
       - .github/workflows/apply-fifth-diner-vo.yml
   workflow_dispatch:
 

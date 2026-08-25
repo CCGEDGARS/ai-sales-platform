@@ -30,6 +30,16 @@ test("Golden Master scoring and repair enforce editorial authorship instead of r
   assert.match(route, /preserve.*second story|develop.*second story/i);
 });
 
+test("legacy synchronous Lepers generation cannot bypass the Second Story gate", () => {
+  const start = route.indexOf("if (!asyncMode)");
+  const end = route.indexOf("const configuredModel", start);
+  assert.ok(start >= 0 && end > start);
+  const legacyBlock = route.slice(start, end);
+  assert.match(legacyBlock, /goldenMaster/);
+  assert.match(legacyBlock, /secondStory\?\.passes|goldenMaster\.passes/);
+  assert.match(legacyBlock, /Refresh|refresh/);
+});
+
 test("the visible default Editorial brief tells DANA to create a Second Story", () => {
   assert.match(page, /Second Story/i);
   assert.match(page, /create|veido|build/i);

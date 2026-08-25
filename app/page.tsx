@@ -1144,10 +1144,13 @@ export default function Home() {
         setVoiceoverDraft(result.text);
         setVoiceoverMetrics(result.metrics || null);
         setVoiceoverStatus("generated");
+        const ratioStatus = String(result.metrics?.standardStatus || "");
+        const toneApplied = String(result.tone || voiceoverTone);
+        const cueCount = Number(result.quality?.cueCount || 0);
         setVoiceoverMessage(
-          result.ratioWarning
-            ? `Voice-over generated with ${result.model}. Editorial draft is ready; ratio is ${result.metrics?.ratioPercent ?? "—"}% and needs a final timing review.`
-            : `Generated successfully with ${result.model}. Ratio gate passed: ${result.metrics?.ratioPercent ?? "—"}% of runtime. Review before saving.`,
+          ratioStatus === "within-standard"
+            ? `Selective voice-over generated with ${result.model}. Tone: ${toneApplied} · ${cueCount} VO cues · ${result.metrics?.ratioPercent ?? "—"}% of runtime — inside the 16.17%-17.17% standard.`
+            : `Selective voice-over generated with ${result.model}. Tone: ${toneApplied} · ${cueCount} VO cues · ${result.metrics?.ratioPercent ?? "—"}% of runtime. The script is below the preferred standard because DANA AI did not add recap or filler merely to increase narration. Review whether more narrator beats are editorially justified.`,
         );
         return;
       }
@@ -1156,7 +1159,7 @@ export default function Home() {
         setVoiceoverStatus("generating");
         setVoiceoverMessage(
           result.phase === "correction"
-            ? "Voice-over draft is ready and DANA AI is automatically correcting the mandatory narration ratio…"
+            ? "DANA AI is checking selective VO structure, the selected editorial tone and the narration-ratio standard…"
             : "OpenAI is generating the voice-over in a durable background job. You can keep this page open while it finishes…",
         );
         window.setTimeout(() => {
@@ -1982,7 +1985,7 @@ export default function Home() {
                 <div>
                   <b>Mandatory format ratio · 16.67%</b>
                   <small>
-                    Calibrated against the three applied episode references: British original, Ainārs Ašaks and Ieva Janiševa. DANA AI estimates spoken duration at 130 Latvian words per minute and rejects drafts outside 16.17%–17.17%.
+                    Calibrated against the three applied episode references: British original, Ainārs Ašaks and Ieva Janiševa. DANA AI monitors the 16.67% target and automatically corrects toward the 16.17%–17.17% standard, but it will not pad a scene with recap or obvious narration just to hit the number.
                   </small>
                 </div>
                 <strong>
@@ -1996,8 +1999,8 @@ export default function Home() {
               <div className="voiceover-model-note" aria-label="Voice-over model">
                 <span>✦</span>
                 <div>
-                  <b>GPT-5.6 Sol · durable background generation</b>
-                  <small>Frontier editorial generation runs as a durable OpenAI background job. GPT-5.6 Terra is the automatic fallback and ratio-correction model.</small>
+                  <b>GPT-5.6 Sol · active editorial model</b>
+                  <small>Primary selective voice-over writer. GPT-5.6 Terra is the automatic fallback and final quality/ratio correction model.</small>
                 </div>
               </div>
               <div className="voiceover-controls">

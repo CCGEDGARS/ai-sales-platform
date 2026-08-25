@@ -1,19 +1,19 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 const REQUIRED_REFERENCE_COUNT = 7;
 const VOICEOVER_RATIO_TARGET = 1 / 6;
 const VOICEOVER_RATIO_TOLERANCE = 0.005;
 const VOICEOVER_WPM = 130;
-const MAX_RATIO_REWRITES = 1;
-const OPENAI_CALL_TIMEOUT_MS = 45_000;
-const CORRECTION_TIMEOUT_MS = 25_000;
 const PRIMARY_VOICEOVER_MODEL = "gpt-5.6-sol";
 const FALLBACK_VOICEOVER_MODEL = "gpt-5.6-terra";
+const LEGACY_VOICEOVER_MODEL = "gpt-5.6-terra";
 const DEFAULT_TONE = "Lepers Standard · premium observational comedy";
+const MAX_BACKGROUND_CORRECTIONS = 2;
 
 const RATIO_REFERENCE_SOURCES = [
   "Come Dine With Me.mp4",
@@ -40,19 +40,24 @@ const TONE_PROFILES: Record<string, string> = {
 
 type OpenAIOutputItem = { type?: string; text?: string };
 type OpenAIResponseData = {
+  id?: string;
   output_text?: string;
   output?: Array<{ content?: OpenAIOutputItem[] }>;
   error?: { code?: string; message?: string } | null;
   model?: string;
   status?: string;
   incomplete_details?: { reason?: string } | null;
+  metadata?: Record<string, string> | null;
 };
 
-type Attempt = {
-  response: Response | null;
-  data: OpenAIResponseData;
-  timedOut: boolean;
-  transportError?: string;
+type VoiceoverInput = {
+  apiKey?: string;
+  transcript?: string;
+  prompt?: string;
+  tone?: string;
+  context?: string;
+  appliedSources?: string[];
+  finalRuntimeSeconds?: number;
 };
 
 function spokenWordCount(text: string) {
@@ -94,12 +99,11 @@ function responseText(data: OpenAIResponseData) {
     .trim();
 }
 
-function modelUnavailable(attempt: Attempt) {
-  const status = attempt.response?.status || 0;
-  const detail = JSON.stringify(attempt.data || "").toLowerCase();
+function modelUnavailable(response: Response, data: OpenAIResponseData) {
+  const detail = JSON.stringify(data || "").toLowerCase();
   return (
-    status === 404 ||
-    status === 403 ||
+    response.status === 403 ||
+    response.status === 404 ||
     (detail.includes("model") &&
       (detail.includes("not found") ||
         detail.includes("not exist") ||
@@ -108,35 +112,89 @@ function modelUnavailable(attempt: Attempt) {
   );
 }
 
-function retryable(attempt: Attempt) {
-  const status = attempt.response?.status || 0;
-  const text = responseText(attempt.data);
-  return (
-    attempt.timedOut ||
-    modelUnavailable(attempt) ||
-    status >= 500 ||
-    (attempt.response?.ok === true && !text) ||
-    attempt.data.status === "incomplete"
-  );
+function wordTargets(finalRuntimeSeconds: number) {
+  return {
+    targetWords: Math.round(((finalRuntimeSeconds * VOICEOVER_RATIO_TARGET) / 60) * VOICEOVER_WPM),
+    lowerWords: Math.ceil(
+      ((finalRuntimeSeconds * (VOICEOVER_RATIO_TARGET - VOICEOVER_RATIO_TOLERANCE)) / 60) * VOICEOVER_WPM,
+    ),
+    upperWords: Math.floor(
+      ((finalRuntimeSeconds * (VOICEOVER_RATIO_TARGET + VOICEOVER_RATIO_TOLERANCE)) / 60) * VOICEOVER_WPM,
+    ),
+  };
 }
 
-async function requestModel({
+function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
+  const selectedTone = String(body.tone || DEFAULT_TONE);
+  const toneProfile = TONE_PROFILES[selectedTone] || TONE_PROFILES[DEFAULT_TONE];
+  const { targetWords, lowerWords, upperWords } = wordTargets(finalRuntimeSeconds);
+  const system = `You are DANA AI, a senior Latvian television story editor and voice-over writer for Gandrīz ideālas vakariņas. Write fluent, natural, witty Latvian television narration. Never invent facts or events not present in the transcript. Never imitate wording from a reference. Do not explain obvious actions. Protect participant dignity. Return only the production-ready voice-over script with useful timecode anchors where the transcript supports them.\n\nSELECTED TONE: ${selectedTone}\n${toneProfile}`;
+  const user = `Create the final Latvian voice-over for this scene.\nFinal runtime: ${Math.round(finalRuntimeSeconds)} seconds.\nTarget spoken words: ${targetWords}. HARD accepted word range: ${lowerWords}-${upperWords} words, corresponding to 16.17%-17.17% of runtime at 130 words/minute. Count carefully before answering.\nEditorial request: ${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}\n\nApplied reference calibration: ${RATIO_REFERENCE_SOURCES.join(", ")}.\nApplied production context:\n${body.context || "No reference manifest supplied."}\n\nSOURCE TRANSCRIPT:\n${body.transcript}`;
+  return { selectedTone, system, user, targetWords, lowerWords, upperWords };
+}
+
+function metadataFor(finalRuntimeSeconds: number, tone: string, phase: string, correctionAttempt: number) {
+  const { targetWords, lowerWords, upperWords } = wordTargets(finalRuntimeSeconds);
+  return {
+    dana_phase: phase,
+    dana_correction_attempt: String(correctionAttempt),
+    dana_runtime_seconds: String(Math.round(finalRuntimeSeconds)),
+    dana_target_words: String(targetWords),
+    dana_lower_words: String(lowerWords),
+    dana_upper_words: String(upperWords),
+    dana_tone: tone.slice(0, 500),
+  };
+}
+
+async function createBackgroundResponse({
   apiKey,
   model,
   system,
   user,
-  timeoutMs,
-  maxOutputTokens = 8_000,
+  metadata,
 }: {
   apiKey: string;
   model: string;
   system: string;
   user: string;
-  timeoutMs: number;
-  maxOutputTokens?: number;
-}): Promise<Attempt> {
+  metadata: Record<string, string>;
+}) {
+  const response = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      background: true,
+      store: true,
+      reasoning: { effort: "medium" },
+      max_output_tokens: 12_000,
+      text: { verbosity: "medium" },
+      metadata,
+      input: [
+        { role: "system", content: [{ type: "input_text", text: system }] },
+        { role: "user", content: [{ type: "input_text", text: user }] },
+      ],
+    }),
+    cache: "no-store",
+  });
+  const data = (await response.json().catch(() => ({}))) as OpenAIResponseData;
+  return { response, data };
+}
+
+async function createLegacyResponse({
+  apiKey,
+  system,
+  user,
+}: {
+  apiKey: string;
+  system: string;
+  user: string;
+}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), 50_000);
   try {
     const response = await fetch(OPENAI_URL, {
       method: "POST",
@@ -145,11 +203,10 @@ async function requestModel({
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model,
-        reasoning: { effort: "low" },
-        max_output_tokens: maxOutputTokens,
+        model: LEGACY_VOICEOVER_MODEL,
+        reasoning: { effort: "none" },
+        max_output_tokens: 8_000,
         text: { verbosity: "medium" },
-        service_tier: "auto",
         input: [
           { role: "system", content: [{ type: "input_text", text: system }] },
           { role: "user", content: [{ type: "input_text", text: user }] },
@@ -161,45 +218,25 @@ async function requestModel({
     const data = (await response.json().catch(() => ({}))) as OpenAIResponseData;
     return { response, data, timedOut: false };
   } catch (error) {
-    const timedOut = error instanceof Error && error.name === "AbortError";
     return {
       response: null,
-      data: {},
-      timedOut,
-      transportError:
-        error instanceof Error
-          ? error.message
-          : "OpenAI request transport failed.",
+      data: {} as OpenAIResponseData,
+      timedOut: error instanceof Error && error.name === "AbortError",
+      transportError: error instanceof Error ? error.message : "OpenAI transport failed.",
     };
   } finally {
     clearTimeout(timer);
   }
 }
 
-function attemptMessage(attempt: Attempt, label: string) {
-  if (attempt.timedOut) return `${label} timed out before returning a script.`;
-  if (attempt.transportError) return `${label} transport error: ${attempt.transportError}`;
-  const status = attempt.response?.status || 0;
-  return (
-    attempt.data.error?.message ||
-    attempt.data.incomplete_details?.reason ||
-    `${label} failed${status ? ` (HTTP ${status})` : ""}.`
-  );
+function providerError(data: OpenAIResponseData, fallback: string) {
+  return data.error?.message || data.incomplete_details?.reason || fallback;
 }
 
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   try {
-    const body = (await request.json()) as {
-      apiKey?: string;
-      transcript?: string;
-      prompt?: string;
-      tone?: string;
-      context?: string;
-      appliedSources?: string[];
-      finalRuntimeSeconds?: number;
-    };
-
+    const body = (await request.json()) as VoiceoverInput;
     const apiKey = String(body.apiKey || "").trim() || (await getStoredKey("openai"));
     if (!apiKey) {
       return NextResponse.json(
@@ -213,168 +250,179 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-
     const appliedSources = Array.isArray(body.appliedSources) ? body.appliedSources : [];
     if (appliedSources.length < REQUIRED_REFERENCE_COUNT) {
       return NextResponse.json(
-        {
-          ok: false,
-          message: `Voice-over is blocked until all ${REQUIRED_REFERENCE_COUNT} protected production references are applied.`,
-          requestId,
-        },
+        { ok: false, message: `Voice-over is blocked until all ${REQUIRED_REFERENCE_COUNT} protected production references are applied.`, requestId },
         { status: 400 },
       );
     }
-
     const finalRuntimeSeconds = Number(body.finalRuntimeSeconds || 0);
     if (!Number.isFinite(finalRuntimeSeconds) || finalRuntimeSeconds <= 0) {
       return NextResponse.json(
-        {
-          ok: false,
-          message: "The final video runtime is required so the mandatory voice-over ratio can be enforced.",
-          requestId,
-        },
+        { ok: false, message: "The final video runtime is required so the mandatory voice-over ratio can be enforced.", requestId },
         { status: 400 },
       );
     }
 
-    const targetWords = Math.round(
-      ((finalRuntimeSeconds * VOICEOVER_RATIO_TARGET) / 60) * VOICEOVER_WPM,
-    );
-    const lowerWords = Math.ceil(
-      ((finalRuntimeSeconds * (VOICEOVER_RATIO_TARGET - VOICEOVER_RATIO_TOLERANCE)) / 60) *
-        VOICEOVER_WPM,
-    );
-    const upperWords = Math.floor(
-      ((finalRuntimeSeconds * (VOICEOVER_RATIO_TARGET + VOICEOVER_RATIO_TOLERANCE)) / 60) *
-        VOICEOVER_WPM,
-    );
-    const selectedTone = String(body.tone || DEFAULT_TONE);
-    const toneProfile = TONE_PROFILES[selectedTone] || TONE_PROFILES[DEFAULT_TONE];
+    const { selectedTone, system, user } = prompts(body, finalRuntimeSeconds);
+    const asyncMode = request.headers.get("x-dana-voiceover-mode") === "background";
 
-    const system = `You are DANA AI, a senior Latvian television story editor and voice-over writer for Gandrīz ideālas vakariņas. Write fluent, natural, witty Latvian television narration. Never invent facts or events not present in the transcript. Never imitate wording from a reference. Do not explain obvious actions. Protect participant dignity. Return only the production-ready voice-over script with useful timecode anchors where the transcript supports them.\n\nSELECTED TONE: ${selectedTone}\n${toneProfile}`;
-
-    const baseUser = `Create the final Latvian voice-over for this scene.\nFinal runtime: ${Math.round(finalRuntimeSeconds)} seconds.\nTarget spoken words: ${targetWords}. HARD accepted word range: ${lowerWords}-${upperWords} words, corresponding to 16.17%-17.17% of runtime at 130 words/minute. Count carefully before answering.\nEditorial request: ${body.prompt || "Build a clear, engaging bridge that heightens character, tension and humour without overexplaining."}\n\nApplied reference calibration: ${RATIO_REFERENCE_SOURCES.join(", ")}.\nApplied production context:\n${body.context || "No reference manifest supplied."}\n\nSOURCE TRANSCRIPT:\n${body.transcript}`;
-
-    const configuredModel = process.env.OPENAI_VOICEOVER_MODEL || PRIMARY_VOICEOVER_MODEL;
-    let activeModel = configuredModel;
-    let primary = await requestModel({
-      apiKey,
-      model: activeModel,
-      system,
-      user: baseUser,
-      timeoutMs: OPENAI_CALL_TIMEOUT_MS,
-    });
-    let text = responseText(primary.data);
-
-    if ((!primary.response?.ok || !text || primary.data.status === "incomplete") && retryable(primary)) {
-      console.warn("DANA voice-over primary attempt required fallback", {
+    // Compatibility for already-open browser sessions from before the background-job upgrade.
+    // This path is intentionally short and uses Terra with no reasoning so the old page can
+    // receive a complete script without requiring a refresh that would lose its transcript.
+    if (!asyncMode) {
+      const legacy = await createLegacyResponse({ apiKey, system, user });
+      if (!legacy.response?.ok) {
+        const message = legacy.timedOut
+          ? "OpenAI voice-over generation timed out. The new background generator is available after refreshing the app."
+          : legacy.transportError || providerError(legacy.data, `OpenAI voice-over generation failed${legacy.response ? ` (HTTP ${legacy.response.status})` : ""}.`);
+        return NextResponse.json({ ok: false, message: `${message} Reference: ${requestId}`, requestId }, { status: 502 });
+      }
+      const text = responseText(legacy.data);
+      if (!text) {
+        return NextResponse.json(
+          { ok: false, message: `OpenAI returned no usable voice-over text. Reference: ${requestId}`, requestId },
+          { status: 502 },
+        );
+      }
+      const metrics = ratioMetrics(text, finalRuntimeSeconds);
+      return NextResponse.json({
+        ok: true,
+        status: "completed",
+        model: legacy.data.model || LEGACY_VOICEOVER_MODEL,
+        text,
+        metrics,
+        ratioWarning: !metrics.passes,
+        tone: selectedTone,
         requestId,
-        model: activeModel,
-        timedOut: primary.timedOut,
-        status: primary.response?.status || 0,
-        openaiStatus: primary.data.status || null,
-        message: attemptMessage(primary, "Primary OpenAI request"),
       });
-      activeModel = FALLBACK_VOICEOVER_MODEL;
-      primary = await requestModel({
-        apiKey,
-        model: activeModel,
-        system,
-        user: baseUser,
-        timeoutMs: OPENAI_CALL_TIMEOUT_MS,
-      });
-      text = responseText(primary.data);
     }
 
-    if (!primary.response?.ok || !text) {
-      const message = attemptMessage(primary, "OpenAI voice-over generation");
-      console.error("DANA voice-over generation failed", {
-        requestId,
-        model: activeModel,
-        status: primary.response?.status || 0,
-        timedOut: primary.timedOut,
-        message,
+    const configuredModel = process.env.OPENAI_VOICEOVER_MODEL || PRIMARY_VOICEOVER_MODEL;
+    let model = configuredModel;
+    let created = await createBackgroundResponse({
+      apiKey,
+      model,
+      system,
+      user,
+      metadata: metadataFor(finalRuntimeSeconds, selectedTone, "initial", 0),
+    });
+    if (!created.response.ok && modelUnavailable(created.response, created.data) && model !== FALLBACK_VOICEOVER_MODEL) {
+      model = FALLBACK_VOICEOVER_MODEL;
+      created = await createBackgroundResponse({
+        apiKey,
+        model,
+        system,
+        user,
+        metadata: metadataFor(finalRuntimeSeconds, selectedTone, "initial", 0),
       });
+    }
+    if (!created.response.ok || !created.data.id) {
+      const message = providerError(created.data, `OpenAI background voice-over job could not start (HTTP ${created.response.status}).`);
+      return NextResponse.json({ ok: false, message: `${message} Reference: ${requestId}`, requestId }, { status: 502 });
+    }
+    return NextResponse.json({
+      ok: true,
+      status: created.data.status || "queued",
+      responseId: created.data.id,
+      model: created.data.model || model,
+      phase: "initial",
+      requestId,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { ok: false, message: `${error instanceof Error ? error.message : "Voice-over generation failed."} Reference: ${requestId}`, requestId },
+      { status: 500 },
+    );
+  }
+}
+
+export async function GET(request: Request) {
+  const requestId = crypto.randomUUID();
+  try {
+    const responseId = new URL(request.url).searchParams.get("responseId")?.trim() || "";
+    if (!responseId.startsWith("resp_")) {
+      return NextResponse.json({ ok: false, message: "A valid OpenAI response ID is required.", requestId }, { status: 400 });
+    }
+    const apiKey = await getStoredKey("openai");
+    if (!apiKey) {
+      return NextResponse.json({ ok: false, message: "OpenAI API key is missing. Reconnect OpenAI in Settings.", requestId }, { status: 400 });
+    }
+
+    const provider = await fetch(`${OPENAI_URL}/${encodeURIComponent(responseId)}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+    });
+    const data = (await provider.json().catch(() => ({}))) as OpenAIResponseData;
+    if (!provider.ok) {
       return NextResponse.json(
-        { ok: false, message: `${message} Reference: ${requestId}`, requestId },
-        { status: primary.response?.status === 401 ? 401 : 502 },
+        { ok: false, message: `${providerError(data, `OpenAI job lookup failed (HTTP ${provider.status}).`)} Reference: ${requestId}`, requestId },
+        { status: 502 },
       );
     }
 
-    let metrics = ratioMetrics(text, finalRuntimeSeconds);
-    let rewriteCount = 0;
+    if (data.status === "queued" || data.status === "in_progress") {
+      return NextResponse.json({ ok: true, status: data.status, responseId, phase: data.metadata?.dana_phase || "initial", model: data.model, requestId });
+    }
+    if (data.status !== "completed") {
+      return NextResponse.json(
+        { ok: false, message: `${providerError(data, `OpenAI voice-over job ended with status ${data.status || "unknown"}.`)} Reference: ${requestId}`, requestId },
+        { status: 502 },
+      );
+    }
 
-    if (!metrics.passes && rewriteCount < MAX_RATIO_REWRITES) {
-      rewriteCount += 1;
-      const correctionUser = `Rewrite the draft below so the SPOKEN narration is strictly ${lowerWords}-${upperWords} words, ideally ${targetWords}. Preserve its verified facts, strongest humour, Latvian naturalness and useful timecodes. Do not add new facts. Return only the complete replacement script.\n\nCURRENT DRAFT (${metrics.words} words):\n${text}`;
-      const correction = await requestModel({
+    const text = responseText(data);
+    if (!text) {
+      return NextResponse.json({ ok: false, message: `OpenAI completed the job without usable voice-over text. Reference: ${requestId}`, requestId }, { status: 502 });
+    }
+
+    const metadata = data.metadata || {};
+    const finalRuntimeSeconds = Number(metadata.dana_runtime_seconds || 0);
+    const metrics = ratioMetrics(text, finalRuntimeSeconds);
+    const correctionAttempt = Number(metadata.dana_correction_attempt || 0);
+    const phase = metadata.dana_phase || "initial";
+
+    if (!metrics.passes && correctionAttempt < MAX_BACKGROUND_CORRECTIONS) {
+      const lowerWords = Number(metadata.dana_lower_words || 0);
+      const upperWords = Number(metadata.dana_upper_words || 0);
+      const targetWords = Number(metadata.dana_target_words || 0);
+      const correctionSystem = "You are DANA AI's final Latvian television script editor. Preserve verified facts, humour, tone and useful timecodes. Never invent facts. Return only the complete replacement voice-over script.";
+      const correctionUser = `Rewrite this Latvian voice-over so the SPOKEN narration is strictly ${lowerWords}-${upperWords} words, ideally ${targetWords}. Count carefully. Preserve the strongest verified observations and timecodes. Do not discuss the edit.\n\nCURRENT DRAFT (${metrics.words} words):\n${text}`;
+      const correction = await createBackgroundResponse({
         apiKey,
         model: FALLBACK_VOICEOVER_MODEL,
-        system,
+        system: correctionSystem,
         user: correctionUser,
-        timeoutMs: CORRECTION_TIMEOUT_MS,
-        maxOutputTokens: 6_000,
+        metadata: metadataFor(finalRuntimeSeconds, metadata.dana_tone || DEFAULT_TONE, "correction", correctionAttempt + 1),
       });
-      const correctedText = responseText(correction.data);
-      if (correction.response?.ok && correctedText) {
-        const correctedMetrics = ratioMetrics(correctedText, finalRuntimeSeconds);
-        if (
-          correctedMetrics.passes ||
-          Math.abs(correctedMetrics.ratio - VOICEOVER_RATIO_TARGET) <
-            Math.abs(metrics.ratio - VOICEOVER_RATIO_TARGET)
-        ) {
-          text = correctedText;
-          metrics = correctedMetrics;
-          activeModel = correction.data.model || FALLBACK_VOICEOVER_MODEL;
-        }
-      } else {
-        console.warn("DANA voice-over ratio correction did not complete", {
+      if (correction.response.ok && correction.data.id) {
+        return NextResponse.json({
+          ok: true,
+          status: correction.data.status || "queued",
+          responseId: correction.data.id,
+          phase: "correction",
+          correctionAttempt: correctionAttempt + 1,
+          model: correction.data.model || FALLBACK_VOICEOVER_MODEL,
           requestId,
-          status: correction.response?.status || 0,
-          timedOut: correction.timedOut,
-          message: attemptMessage(correction, "Ratio correction"),
         });
       }
     }
 
-    if (!metrics.passes) {
-      console.error("DANA voice-over ratio gate failed", {
-        requestId,
-        words: metrics.words,
-        ratioPercent: metrics.ratioPercent,
-        required: `${metrics.lowerPercent}-${metrics.upperPercent}`,
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          message: `Voice-over text was generated, but the mandatory ratio gate did not pass (${metrics.ratioPercent}% vs ${metrics.lowerPercent}-${metrics.upperPercent}%). Retry once; the system will regenerate to the exact target. Reference: ${requestId}`,
-          metrics,
-          rewriteCount,
-          requestId,
-        },
-        { status: 422 },
-      );
-    }
-
     return NextResponse.json({
       ok: true,
-      model: primary.data.model || activeModel,
-      modelTier: "frontier",
+      status: "completed",
+      responseId,
+      phase,
+      model: data.model || FALLBACK_VOICEOVER_MODEL,
       text,
-      appliedReferenceCount: appliedSources.length,
       metrics,
-      rewriteCount,
-      tone: selectedTone,
+      ratioWarning: !metrics.passes,
       requestId,
-      ratioRule: "16.67% ± 0.50 percentage points; 130 spoken words/minute estimate",
-      ratioReferenceSources: RATIO_REFERENCE_SOURCES,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Voice-over generation failed.";
-    console.error("DANA voice-over route exception", { requestId, message });
     return NextResponse.json(
-      { ok: false, message: `${message} Reference: ${requestId}`, requestId },
+      { ok: false, message: `${error instanceof Error ? error.message : "Voice-over job lookup failed."} Reference: ${requestId}`, requestId },
       { status: 500 },
     );
   }

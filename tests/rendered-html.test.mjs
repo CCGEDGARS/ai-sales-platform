@@ -125,3 +125,23 @@ test("transcript import card uses spacious stacked layout and a larger action bu
   assert.match(modulesCss, /\.transcript-import-placeholder \.primary-btn/);
   assert.match(modulesCss, /min-width:\s*280px/);
 });
+
+test("voice-over prompt generates selective narrator interventions instead of transcript recap", () => {
+  assert.match(voiceoverRoute, /SELECTIVE NARRATION/);
+  assert.match(voiceoverRoute, /Do not recap the scene/);
+  assert.match(voiceoverRoute, /\[HH:MM:SS\] VO:/);
+  assert.match(voiceoverRoute, /contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation/);
+});
+
+test("voice-over quality gate rejects transcript-like output even when the ratio passes", () => {
+  assert.match(voiceoverRoute, /function voiceoverQualityMetrics/);
+  assert.match(voiceoverRoute, /formatPasses/);
+  assert.match(voiceoverRoute, /!quality\.formatPasses/);
+});
+
+test("ratio correction keeps the selected editorial tone and never pads with recap just to hit the standard", () => {
+  assert.match(voiceoverRoute, /toneProfileFor\(correctionTone\)/);
+  assert.match(voiceoverRoute, /Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio/);
+  assert.doesNotMatch(voiceoverRoute, /Rewrite this Latvian voice-over so the SPOKEN narration is strictly/);
+  assert.match(voiceoverRoute, /standardStatus/);
+});

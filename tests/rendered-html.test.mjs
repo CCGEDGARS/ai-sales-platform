@@ -6,6 +6,7 @@ const page = fs.readFileSync("app/page.tsx", "utf8");
 const transcribe = fs.readFileSync("app/api/transcribe/route.ts", "utf8");
 const voiceoverRoute = fs.readFileSync("app/api/generate-voiceover/route.ts", "utf8");
 const layout = fs.readFileSync("app/layout.tsx", "utf8");
+const modulesCss = fs.readFileSync("app/modules.css", "utf8");
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 
 test("saved API connections are restored from server health", () => {
@@ -106,4 +107,21 @@ test("a downloaded transcript can be imported and immediately unlock voice-over"
   assert.match(importer, /mammoth/);
   assert.match(importer, /\.docx/);
   assert.equal(typeof pkg.dependencies?.mammoth, "string");
+});
+
+test("voice-over recovers runtime from transcript timecodes when browser runtime state is missing", () => {
+  assert.match(voiceoverRoute, /function inferRuntimeFromTranscript/);
+  assert.match(voiceoverRoute, /providedRuntimeSeconds/);
+  assert.match(voiceoverRoute, /inferredRuntimeSeconds/);
+  assert.match(voiceoverRoute, /body\.transcript/);
+});
+
+test("transcript import card uses spacious stacked layout and a larger action button", () => {
+  assert.match(modulesCss, /\.transcript-import-placeholder\s*\{/);
+  assert.match(modulesCss, /display:\s*flex/);
+  assert.match(modulesCss, /flex-direction:\s*column/);
+  assert.match(modulesCss, /gap:\s*16px/);
+  assert.match(modulesCss, /padding:\s*32px/);
+  assert.match(modulesCss, /\.transcript-import-placeholder \.primary-btn/);
+  assert.match(modulesCss, /min-width:\s*280px/);
 });

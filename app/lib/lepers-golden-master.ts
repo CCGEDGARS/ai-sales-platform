@@ -30,7 +30,17 @@ export const LEPERS_GOLDEN_MASTER_FINGERPRINT = {
   },
 } as const;
 
-export type GoldenMasterDimensions = Omit<typeof LEPERS_GOLDEN_MASTER_FINGERPRINT.weights, "total">;
+export type GoldenMasterDimensions = {
+  structure: number;
+  depth: number;
+  voAmount: number;
+  humourAndPov: number;
+  pace: number;
+  productionUsefulness: number;
+  promo: number;
+  characterInsight: number;
+  formatting: number;
+};
 
 export type LepersGoldenMasterScore = {
   name: string;

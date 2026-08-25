@@ -22,3 +22,13 @@ test("legacy built-in brief is migrated while real custom briefs remain preserva
   assert.match(page, /saved\[DEFAULT_EDITORIAL_TONE\]\s*===\s*LEGACY_DEFAULT_EDITORIAL_BRIEF/);
   assert.match(page, /\.\.\.saved/);
 });
+
+test("stale browser brief versions cannot override the canonical Lepers default", () => {
+  assert.match(page, /EDITORIAL_BRIEF_SCHEMA_VERSION/);
+  assert.match(page, /EDITORIAL_BRIEF_VERSION_KEY/);
+  assert.match(page, /localStorage\.getItem\(EDITORIAL_BRIEF_VERSION_KEY\)/);
+  assert.match(page, /savedVersion\s*!==\s*EDITORIAL_BRIEF_SCHEMA_VERSION/);
+  assert.match(page, /\[DEFAULT_EDITORIAL_TONE\]:\s*DEFAULT_LEPERS_EDITORIAL_BRIEF/);
+  assert.match(page, /setVoiceoverPrompt\(DEFAULT_LEPERS_EDITORIAL_BRIEF\)/);
+  assert.match(page, /localStorage\.setItem\(\s*EDITORIAL_BRIEF_VERSION_KEY,\s*EDITORIAL_BRIEF_SCHEMA_VERSION,?\s*\)/);
+});

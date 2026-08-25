@@ -716,6 +716,17 @@ export async function POST(request: Request) {
           { status: 502 },
         );
       }
+      if (goldenMaster && !goldenMaster.secondStory?.passes) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message: `This older synchronous session cannot release a Lepers package without the mandatory Second Story. Refresh DANA Studio and regenerate so the current correction engine can build and verify OTRĀ STĀSTA LĪNIJA. Reference: ${requestId}`,
+            goldenMaster,
+            requestId,
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({
         ok: true,
         status: "completed",

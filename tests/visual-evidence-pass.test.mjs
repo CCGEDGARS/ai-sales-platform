@@ -15,6 +15,14 @@ test("visual evidence is a separate factual Gemini pass, not part of the authent
   assert.match(visualRoute, /\[HH:MM:SS\]/i);
 });
 
+test("visual evidence is accepted only as strict timestamped VISUAL facts", () => {
+  assert.match(visualRoute, /maxDuration\s*=\s*300/);
+  assert.match(visualRoute, /evidenceLines/);
+  assert.match(visualRoute, /validEvidenceLine/);
+  assert.match(visualRoute, /every\(\(line:\s*string\)\s*=>\s*validEvidenceLine\.test\(line\)\)/);
+  assert.match(visualRoute, /observable-facts-only/);
+});
+
 test("video processing stores transcript and visual evidence in separate fields", () => {
   assert.match(page, /visualEvidence\??:\s*string/);
   assert.match(page, /visualEvidenceAvailable\??:\s*boolean/);

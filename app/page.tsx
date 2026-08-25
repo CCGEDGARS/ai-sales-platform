@@ -131,6 +131,31 @@ const sourceApplications: Record<string, string> = {
   "Top Ultimate Come Dine With Me Moments.mp4": "Format-moment benchmark: proven comic mechanisms, awkward pauses, reaction shots, escalation and memorable narrator interventions.",
 };
 
+const TAILORED_TONE = "Tailored · custom editorial direction";
+const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
+
+const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
+  [DEFAULT_EDITORIAL_TONE]:
+    "Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.",
+  "Observational · sharp, warm and lightly humorous":
+    "Create selective Latvian voice-over that notices the social details others miss. Use warm precision, character-specific observation and clean comic turns. Add meaning through reactions, contradictions and behaviour without narrating the obvious or mocking vulnerability.",
+  "Dry irony · understated and precise":
+    "Create concise Latvian voice-over with dry, understated humour. Focus on contradictions, awkward pauses, reactions and subtle irony. Underplay rather than exaggerate. Do not describe obvious actions, invent facts, paraphrase dialogue or humiliate participants.",
+  "Warm human · intimate and empathetic":
+    "Create warm, intimate Latvian voice-over that notices effort, nerves, pride, vulnerability and small acts of courage. Use gentle humour and emotional intelligence. Protect participant dignity and avoid sarcasm that turns a person into the joke.",
+  "Rising tension · cinematic and controlled":
+    "Create controlled Latvian voice-over that builds anticipation and tension from verified behaviour, timing, uncertainty and contradiction. Use short, precise interventions around turning points. Never invent stakes or over-dramatise routine actions.",
+  "Fast bridge · concise and energetic":
+    "Create fast, economical Latvian voice-over with compact sentences, active verbs and clean transitions. Every intervention must move the story, sharpen expectation or land a reaction. Avoid decorative filler, recap and long explanations.",
+  "Classic · British original":
+    "Create Latvian voice-over with the dry, clever, lightly cheeky observational spirit of the British format. Use elegant understatement, social observation and comic reversals while preserving Latvian naturalness. Avoid melodrama, cruelty and obvious narration.",
+  [TAILORED_TONE]: "",
+};
+
+function defaultEditorialBrief(tone: string) {
+  return EDITORIAL_TONE_BRIEFS[tone] ?? "";
+}
+
 function buildReferenceBrief(names: string[]) {
   return names
     .map((name, index) => `${index + 1}. ${name}\n   Applied function: ${sourceApplications[name] || "Additional applied production reference. Use only when relevant and never invent facts from it."}`)
@@ -243,12 +268,29 @@ export default function Home() {
       return [];
     }
   });
-  const [voiceoverPrompt, setVoiceoverPrompt] = useState(
-    "Create a production-ready Latvian bridge for this scene. Match the Rihards Lepers reference in depth, rhythm, character insight and intelligent humour; build from contrast, reactions and awkwardness without describing obvious actions or inventing facts.",
-  );
-  const [voiceoverTone, setVoiceoverTone] = useState(
-    "Lepers Standard · premium observational comedy",
-  );
+  const [voiceoverTone, setVoiceoverTone] = useState(DEFAULT_EDITORIAL_TONE);
+  const [voiceoverBriefs, setVoiceoverBriefs] = useState<Record<string, string>>(() => {
+    if (typeof window === "undefined") return { ...EDITORIAL_TONE_BRIEFS };
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("dana-ai-editorial-briefs") || "{}",
+      ) as Record<string, string>;
+      return { ...EDITORIAL_TONE_BRIEFS, ...saved };
+    } catch {
+      return { ...EDITORIAL_TONE_BRIEFS };
+    }
+  });
+  const [voiceoverPrompt, setVoiceoverPrompt] = useState(() => {
+    if (typeof window === "undefined") return defaultEditorialBrief(DEFAULT_EDITORIAL_TONE);
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("dana-ai-editorial-briefs") || "{}",
+      ) as Record<string, string>;
+      return saved[DEFAULT_EDITORIAL_TONE] ?? defaultEditorialBrief(DEFAULT_EDITORIAL_TONE);
+    } catch {
+      return defaultEditorialBrief(DEFAULT_EDITORIAL_TONE);
+    }
+  });
   const [voiceoverDraft, setVoiceoverDraft] = useState("");
   const [voiceoverStatus, setVoiceoverStatus] = useState<
     "idle" | "generating" | "generated" | "failed"
@@ -308,6 +350,14 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "dana-ai-editorial-briefs",
+        JSON.stringify(voiceoverBriefs),
+      );
+    } catch {}
+  }, [voiceoverBriefs]);
   useEffect(() => {
     try {
       window.localStorage.setItem(
@@ -1218,6 +1268,26 @@ This also removes it from the active project context.`)) return;
       );
     }
   };
+  const updateEditorialBrief = (value: string) => {
+    setVoiceoverPrompt(value);
+    setVoiceoverBriefs((current) => ({ ...current, [voiceoverTone]: value }));
+  };
+
+  const changeEditorialTone = (nextTone: string) => {
+    setVoiceoverBriefs((current) => ({
+      ...current,
+      [voiceoverTone]: voiceoverPrompt,
+    }));
+    const nextBrief = voiceoverBriefs[nextTone] ?? defaultEditorialBrief(nextTone);
+    setVoiceoverTone(nextTone);
+    setVoiceoverPrompt(nextBrief);
+    setVoiceoverMessage(
+      nextTone === TAILORED_TONE
+        ? "Tailored mode selected. Describe the exact editorial direction for this scene."
+        : `Editorial brief switched to ${nextTone}.`,
+    );
+  };
+
   const generateVoiceover = async () => {
     if (!processed || !transcriptResults.length) {
       setVoiceoverStatus("failed");
@@ -2061,19 +2131,24 @@ This also removes it from the active project context.`)) return;
               </div>
               <div className="voiceover-controls">
                 <label>
-                  What should this bridge do?
+                  Editorial brief
                   <textarea
                     value={voiceoverPrompt}
-                    onChange={(e) => setVoiceoverPrompt(e.target.value)}
+                    onChange={(e) => updateEditorialBrief(e.target.value)}
+                    placeholder={
+                      voiceoverTone === TAILORED_TONE
+                        ? "Describe the desired narrator attitude, humour level, pace, emotional tone, character treatment, references, or specific instructions for this scene."
+                        : undefined
+                    }
                   />
                 </label>
                 <label>
                   Editorial tone
                   <select
                     value={voiceoverTone}
-                    onChange={(e) => setVoiceoverTone(e.target.value)}
+                    onChange={(e) => changeEditorialTone(e.target.value)}
                   >
-                    <option>Lepers Standard · premium observational comedy</option>
+                    <option>{DEFAULT_EDITORIAL_TONE}</option>
                     <option>
                       Observational · sharp, warm and lightly humorous
                     </option>
@@ -2082,6 +2157,7 @@ This also removes it from the active project context.`)) return;
                     <option>Rising tension · cinematic and controlled</option>
                     <option>Fast bridge · concise and energetic</option>
                     <option>Classic · British original</option>
+                    <option>{TAILORED_TONE}</option>
                   </select>
                 </label>
               </div>

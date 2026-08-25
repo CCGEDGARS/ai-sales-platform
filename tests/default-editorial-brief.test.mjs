@@ -15,3 +15,10 @@ test("default Lepers editorial brief exposes the compact Fifth Dinner Guest doct
   assert.match(page, /never generic description or empty reactions/i);
   assert.match(page, /16\.67% target without padding/i);
 });
+
+test("legacy built-in brief is migrated while real custom briefs remain preservable", () => {
+  assert.match(page, /LEGACY_DEFAULT_EDITORIAL_BRIEF/);
+  assert.match(page, /mergeSavedEditorialBriefs/);
+  assert.match(page, /saved\[DEFAULT_EDITORIAL_TONE\]\s*===\s*LEGACY_DEFAULT_EDITORIAL_BRIEF/);
+  assert.match(page, /\.\.\.saved/);
+});

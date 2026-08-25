@@ -142,10 +142,11 @@ const sourceApplications: Record<string, string> = {
 const TAILORED_TONE = "Tailored · custom editorial direction";
 const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
 const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
+const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.';
+const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the complete Latvian package at the Lepers Golden Master standard. VO is the invisible fifth dinner guest: warm, opinionated, lightly ironic and observant. Say what the viewer is thinking, notice details others miss, use internal dialogue, contradictions, provocation and callbacks when earned. Every VO must add story, humour, tension, character or emotion—never generic description or empty reactions. Protect strong dialogue and silence, never invent facts or humiliate participants, and keep VO selective near the 16.67% target without padding.';
 
 const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
-  [DEFAULT_EDITORIAL_TONE]:
-    "Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.",
+  [DEFAULT_EDITORIAL_TONE]: DEFAULT_LEPERS_EDITORIAL_BRIEF,
   "Observational · sharp, warm and lightly humorous":
     "Create selective Latvian voice-over that notices the social details others miss. Use warm precision, character-specific observation and clean comic turns. Add meaning through reactions, contradictions and behaviour without narrating the obvious or mocking vulnerability.",
   "Dry irony · understated and precise":
@@ -163,6 +164,14 @@ const EDITORIAL_TONE_BRIEFS: Record<string, string> = {
 
 function defaultEditorialBrief(tone: string) {
   return EDITORIAL_TONE_BRIEFS[tone] ?? "";
+}
+
+function mergeSavedEditorialBriefs(saved: Record<string, string>) {
+  const merged = { ...EDITORIAL_TONE_BRIEFS, ...saved };
+  if (saved[DEFAULT_EDITORIAL_TONE] === LEGACY_DEFAULT_EDITORIAL_BRIEF) {
+    merged[DEFAULT_EDITORIAL_TONE] = DEFAULT_LEPERS_EDITORIAL_BRIEF;
+  }
+  return merged;
 }
 
 function buildReferenceBrief(names: string[]) {
@@ -288,7 +297,7 @@ export default function Home() {
       const saved = JSON.parse(
         window.localStorage.getItem("dana-ai-editorial-briefs") || "{}",
       ) as Record<string, string>;
-      return { ...EDITORIAL_TONE_BRIEFS, ...saved };
+      return mergeSavedEditorialBriefs(saved);
     } catch {
       return { ...EDITORIAL_TONE_BRIEFS };
     }
@@ -299,7 +308,7 @@ export default function Home() {
       const saved = JSON.parse(
         window.localStorage.getItem("dana-ai-editorial-briefs") || "{}",
       ) as Record<string, string>;
-      return saved[DEFAULT_EDITORIAL_TONE] ?? defaultEditorialBrief(DEFAULT_EDITORIAL_TONE);
+      return mergeSavedEditorialBriefs(saved)[DEFAULT_EDITORIAL_TONE];
     } catch {
       return defaultEditorialBrief(DEFAULT_EDITORIAL_TONE);
     }

@@ -1,0 +1,42 @@
+name: Apply Lepers Golden Master
+
+on:
+  push:
+    branches: [dana-global-scene-brief]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: ${{ !contains(github.event.head_commit.message, 'Integrate Lepers Golden Master') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dana-global-scene-brief
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Apply integration patch
+        run: python scripts/apply-lepers-golden-master.py
+      - name: Verify tests
+        run: npm test
+      - name: Verify production build
+        run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit verified integration
+        run: |
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/page.tsx
+          if git diff --cached --quiet; then
+            echo "No integration changes to commit"
+          else
+            git commit -m "Integrate Lepers Golden Master"
+            git push origin HEAD:dana-global-scene-brief
+          fi

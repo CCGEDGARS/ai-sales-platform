@@ -1,0 +1,49 @@
+name: Apply fifth-diner VO rule
+
+on:
+  push:
+    branches: [dana-fifth-diner-vo]
+    paths:
+      - scripts/apply-fifth-diner-vo.py
+      - .github/workflows/apply-fifth-diner-vo.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dana-fifth-diner-vo
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply fifth-diner rule
+        run: python3 scripts/apply-fifth-diner-vo.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Run complete regression suite
+        run: npm test
+      - name: Build production app
+        run: npm run build
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts
+          if git diff --cached --quiet; then
+            echo "No implementation changes required."
+            exit 0
+          fi
+          git commit -m "Make fifth-diner point of view mandatory in voice-over"
+          git pull --rebase origin dana-fifth-diner-vo
+          git push origin HEAD:dana-fifth-diner-vo

@@ -84,16 +84,12 @@ test("large video bytes go through the controlled native upload proxy instead of
   assert.match(worker, /async for chunk in request\.stream\(\)/);
 });
 
-test("voice-over generation uses durable OpenAI background jobs instead of one long Vercel request", () => {
+test("voice-over backend cannot repeat the 300-second synchronous timeout architecture", () => {
   assert.match(voiceoverRoute, /background:\s*true/);
   assert.match(voiceoverRoute, /export async function GET/);
   assert.match(voiceoverRoute, /\/responses\/\$\{encodeURIComponent\(responseId\)\}/);
-  assert.match(voiceoverRoute, /data\.status === "queued" \|\| data\.status === "in_progress"/);
-  assert.equal(fs.existsSync("public/voiceover-background.js"), true);
-  const client = fs.readFileSync("public/voiceover-background.js", "utf8");
-  assert.match(layout, /voiceover-background\.js/);
-  assert.match(client, /X-DANA-Voiceover-Mode/);
-  assert.match(client, /responseId/);
-  assert.match(client, /setTimeout/);
-  assert.match(client, /dana-ai-pending-voiceover/);
+  assert.match(voiceoverRoute, /LEGACY_VOICEOVER_MODEL = "gpt-5\.6-terra"/);
+  assert.match(voiceoverRoute, /reasoning:\s*\{ effort: "none" \}/);
+  assert.match(voiceoverRoute, /setTimeout\(\(\) => controller\.abort\(\), 50_000\)/);
+  assert.match(voiceoverRoute, /x-dana-voiceover-mode/);
 });

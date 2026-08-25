@@ -1,0 +1,23 @@
+name: Verify editorial brief migration
+
+on:
+  push:
+    branches: [fix/editorial-brief-version-migration]
+    paths:
+      - app/page.tsx
+      - tests/default-editorial-brief.test.mjs
+      - .github/workflows/verify-editorial-brief-migration.yml
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/default-editorial-brief.test.mjs
+      - run: npm run build

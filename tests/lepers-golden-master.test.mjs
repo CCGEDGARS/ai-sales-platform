@@ -40,7 +40,10 @@ test("canonical contract locks production standard while allowing content variat
   assert.match(standard, /Golden Master/);
 });
 
-test("UI identifies the locked Golden Master mode and can show the match score", () => {
+test("UI identifies the locked Golden Master mode and renders returned score plus dimensions", () => {
   assert.match(page, /Lepers Golden Master · locked 10\/10 benchmark/);
-  assert.match(page, /Golden Master Match/);
+  assert.match(page, /type GoldenMasterMetrics/);
+  assert.match(page, /setGoldenMasterMetrics\(result\.goldenMaster/);
+  assert.match(page, /Golden Master Match:\s*\{goldenMasterMetrics\.score\}\/100/);
+  assert.match(page, /goldenMasterMetrics\.dimensions/);
 });

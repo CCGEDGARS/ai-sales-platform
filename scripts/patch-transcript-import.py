@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Apply the transcript re-import workflow to the live DANA production UI.
 PAGE = Path("app/page.tsx")
 text = PAGE.read_text()
 

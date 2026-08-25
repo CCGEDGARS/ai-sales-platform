@@ -40,6 +40,13 @@ type VoiceoverMetrics = {
   upperPercent: number;
   passes: boolean;
 };
+type GoldenMasterMetrics = {
+  score: number;
+  threshold: number;
+  passes: boolean;
+  dimensions: Record<string, number>;
+  deficiencies: string[];
+};
 type TranscriptResult = {
   fileName: string;
   transcript: string;
@@ -303,6 +310,7 @@ export default function Home() {
   >("idle");
   const [voiceoverMessage, setVoiceoverMessage] = useState("");
   const [voiceoverMetrics, setVoiceoverMetrics] = useState<VoiceoverMetrics | null>(null);
+  const [goldenMasterMetrics, setGoldenMasterMetrics] = useState<GoldenMasterMetrics | null>(null);
   const [projectMessage, setProjectMessage] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const sourceInput = useRef<HTMLInputElement>(null);
@@ -1332,6 +1340,7 @@ This also removes it from the active project context.`)) return;
         window.localStorage.removeItem("dana-ai-pending-voiceover");
         setVoiceoverDraft(result.text);
         setVoiceoverMetrics(result.metrics || null);
+        setGoldenMasterMetrics(result.goldenMaster || null);
         setVoiceoverStatus("generated");
         const ratioStatus = String(result.metrics?.standardStatus || "");
         const toneApplied = String(result.tone || voiceoverTone);
@@ -2231,7 +2240,14 @@ This also removes it from the active project context.`)) return;
               </div>
               <div className="voiceover-ratio-card" aria-label="Mandatory voice-over ratio">
                 <div>
-                  <b>Mandatory format ratio · 16.67%</b><small>Golden Master Match: Lepers packages are automatically measured against the locked 10/10 benchmark and revised until they reach at least 95/100 before release.</small>
+                  <b>Mandatory format ratio · 16.67%</b>
+                  {goldenMasterMetrics ? (
+                    <small>
+                      <b>Golden Master Match: {goldenMasterMetrics.score}/100</b> · {Object.entries(goldenMasterMetrics.dimensions).map(([key, value]) => `${key} ${value}`).join(" · ")}
+                    </small>
+                  ) : (
+                    <small>Golden Master Match: Lepers packages are automatically measured against the locked 10/10 benchmark and revised until they reach at least 95/100 before release.</small>
+                  )}
                   <small>
                     Calibrated against the three applied episode references: British original, Ainārs Ašaks and Ieva Janiševa. DANA AI monitors the 16.67% target and automatically corrects toward the 16.17%–17.17% standard, but it will not pad a scene with recap or obvious narration just to hit the number.
                   </small>
@@ -2270,7 +2286,7 @@ This also removes it from the active project context.`)) return;
                     value={voiceoverTone}
                     onChange={(e) => changeEditorialTone(e.target.value)}
                   >
-                    <option>{DEFAULT_EDITORIAL_TONE}</option>
+                    <option value={DEFAULT_EDITORIAL_TONE}>{GOLDEN_MASTER_LABEL}</option>
                     <option>
                       Observational · sharp, warm and lightly humorous
                     </option>

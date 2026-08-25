@@ -1,0 +1,56 @@
+name: Apply selective tone-aware voice-over repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/fix-selective-voiceover.py
+      - tests/rendered-html.test.mjs
+      - .github/workflows/apply-selective-voiceover-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply selective voice-over repair
+        run: python3 scripts/fix-selective-voiceover.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run regression suite and production build
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Commit completed repair
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes required."
+            exit 0
+          fi
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/page.tsx
+          git commit -m "Make DANA voice-over selective tone-aware and ratio-monitored"
+          git pull --rebase origin main
+          git push origin HEAD:main

@@ -67,6 +67,21 @@ SECOND STORY — MANDATORY EDITORIAL AUTHORSHIP RULE
 - Be courageous, proactive, engaging and provocative while protecting participant dignity. The goal is an additional entertainment line that makes the episode richer than the raw material alone.
 `.trim();
 
+const CREATIVE_EXECUTIVE_PRODUCER_RULES = `
+WOW CREATIVE EXECUTIVE PRODUCER MODE — MANDATORY
+- Factually conservative, creatively aggressive. Evidence discipline stays strict; creative ambition does not.
+- Do not submit the first reasonable idea. The first obvious interpretation is a draft, not the answer.
+- Before final writing, run a Creative Room: generate at least 5 genuinely different source-grounded editorial angles, deliberately reject safe/reflection-only options, then show the 3 strongest finalists in the package.
+- Divergence must be real: vary the game, tension, metaphor, character lens, structural device and audience expectation — do not create five paraphrases of the same idea.
+- At least 2 predictable ideas must be named and rejected explicitly so the package proves it escaped safe mode.
+- FORMAT SPICE is mandatory: propose at least 3 source-grounded devices that enrich the format itself. Examples include countdown, contradiction tracker, freeze-frame observation, split-screen comparison, faux-serious audit, scorecard, recurring sound cue, ironic chapter title, prediction meter, visual motif, audience question or another equally strong device.
+- At least one Format Spice idea must change how the scene is presented in edit, graphics, sound, structure or recurring game — not merely add another VO joke.
+- Create the line the raw footage does not already hand you: a new game, premise, tension, anticipation mechanism, metaphor, recurring motif, provocation or payoff architecture.
+- Be willing to make a bold editorial choice. Safe, generic, tasteful-but-forgettable output is a failure even when factually correct.
+- Provocative does not mean cruel: protect dignity, legal safety and factual truth while pushing surprise, wit, tension and entertainment.
+- Final self-test: “What did the production team add that was NOT already sitting in the transcript or picture?” If the answer is vague, rewrite.
+`.trim();
+
 const TONE_PROFILES: Record<string, string> = {
   [DEFAULT_TONE]:
     "LEPERS STANDARD. Premium Latvian observational reality-TV narration: warm, intelligent, dryly amused, character-focused and lightly mischievous. Build humour from the gap between intention, words and what the viewer can see. Use understatement, precise observation, awkward pauses, reactions, delayed punchlines, unexpected comparisons, gentle sarcasm and callbacks. Never humiliate participants, never invent facts, never describe obvious actions, and never copy wording from references.",
@@ -394,6 +409,8 @@ ${FIFTH_DINER_EDITORIAL_RULES}
 
 ${SECOND_STORY_EDITORIAL_RULES}
 
+${CREATIVE_EXECUTIVE_PRODUCER_RULES}
+
 ${GLOBAL_SCENE_DIRECTIVE_RULES}
 
 GOLDEN MASTER CONFORMANCE — LOCKED BENCHMARK
@@ -403,7 +420,11 @@ Fingerprint: ${JSON.stringify(LEPERS_GOLDEN_MASTER_FINGERPRINT)}
 ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`;
     const user = `Create the COMPLETE Lepers Standard production package for the CURRENT transcript, not merely a voice-over list. Follow the canonical section order and tables exactly. Match the Rihards Lepers reference in depth, rhythm, character insight, intelligent humour, decisive edit recommendations, VO delivery notes, teasers, risk control and final producer judgement.
 
-SECOND STORY REQUIREMENT: before writing, identify what else this scene can be about beyond the literal events. Create one bold additional editorial storyline from verified reality, label it OTRĀ STĀSTA LĪNIJA in section 1, develop it through setup → escalation → payoff/callback in section 2, and let it influence VO, edit choices, teasers and the final producer judgement. Do not merely reflect the existing dialogue or action.
+CREATIVE ROOM / WOW REQUIREMENT: do not submit the first reasonable idea. Explore at least 5 genuinely different source-grounded angles before final writing. In section 1, visibly show CREATIVE ROOM — WOW PASS with exactly 3 strongest OTRĀ STĀSTA KANDIDĀTI, at least 2 NORAIDĪTIE PAREDZAMIE LEŅĶI, at least 3 FORMAT SPICE devices, KO MĒS PIEVIENOJAM, KAS NAV JAU GATAVS MATERIĀLĀ, and one DROSMĪGĀKĀ AIZSTĀVAMĀ IDEJA. Be factually conservative and creatively aggressive.
+
+SECOND STORY REQUIREMENT: after the Creative Room, select the strongest bold additional editorial storyline from verified reality, label it OTRĀ STĀSTA LĪNIJA in section 1, develop it through setup → escalation → payoff/callback in section 2, and let it influence VO, edit choices, teasers and the final producer judgement. Do not merely reflect the existing dialogue or action.
+
+FRESHNESS / WOW GATE: a technically correct package that is safe, predictable, merely reflective or adds nothing to the format must be rewritten. The production team must contribute a genuinely new entertainment line beyond the raw material.
 
 VOICE-OVER AMOUNT CONTROL: final runtime ${Math.round(finalRuntimeSeconds)} seconds; target approximately ${targetWords} spoken VO words; preferred band ${lowerWords}-${upperWords}. Count ONLY the GALA VO TEKSTS column in section 4. Never count analysis, production notes, promos or other sections. Never exceed ${upperWords}; never pad with obvious action, biography or dialogue paraphrase simply to reach the target.
 
@@ -437,6 +458,8 @@ ${FIFTH_DINER_EDITORIAL_RULES}
 
 ${SECOND_STORY_EDITORIAL_RULES}
 
+${CREATIVE_EXECUTIVE_PRODUCER_RULES}
+
 ${GLOBAL_SCENE_DIRECTIVE_RULES}
 The selected tone is mandatory: it must materially change rhythm, vocabulary, comic pressure, warmth, irony and sentence shape while all factual constraints remain unchanged.`;
   const user = `Create the final Latvian TV voice-over for this scene.
@@ -451,6 +474,7 @@ EDITORIAL METHOD — FOLLOW IN THIS ORDER:
 7. Match the SELECTED TONE exactly. Tone changes in the UI must produce a recognisably different editorial voice without changing verified facts.
 8. Act as the fifth dinner guest, not a neutral observer: every cue must carry a point of view or added editorial layer, often saying with wit what the viewer is likely thinking. Hunt for details the participants miss, use internal dialogue when natural, and preserve opportunities for running jokes or callbacks. Never use empty reaction VO such as “hmm…”, “jā…”, “traki…” or “nu gan…”. If a generic documentary narrator could say the line, rewrite it.
 9. CREATE A SECOND STORY: do not stop at reflection. Identify an additional source-grounded angle or game in the scene and author original framing, metaphor, hypothesis, prediction, provocative question or callback around verified facts. Advance that additional line across multiple cues when the material supports it. Invent the editorial idea around reality; never invent reality.
+10. CREATIVE DIVERGENCE: do not submit the first reasonable idea. Generate competing alternatives, reject predictable reflection-only angles, and choose the freshest source-grounded premise. When the footage supports it, use format-level devices such as countdown, freeze-frame, split-screen, scorecard, contradiction tracker, recurring sound cue or ironic chapter title so the format becomes richer, not merely the VO.
 
 VOICE-OVER AMOUNT STANDARD:
 Final runtime: ${Math.round(finalRuntimeSeconds)} seconds.
@@ -514,7 +538,7 @@ async function createBackgroundResponse({
       model,
       background: true,
       store: true,
-      reasoning: { effort: "medium" },
+      reasoning: { effort: "high" },
       max_output_tokens: 24_000,
       text: { verbosity: "medium" },
       metadata,
@@ -636,6 +660,9 @@ function goldenMasterRepairInstructions(goldenMaster: ReturnType<typeof scoreLep
   }
   if (!goldenMaster.secondStory?.passes) {
     repairs.push("SECOND STORY: create and explicitly label OTRĀ STĀSTA LĪNIJA from verified reality, then develop the same authored angle through OTRĀ STĀSTA ATTĪSTĪBA as setup → escalation → payoff/callback. Do not settle for reflection-only commentary; preserve strong existing dimensions while adding the missing editorial storyline.");
+  }
+  if (!goldenMaster.creativeFreshness?.passes) {
+    repairs.push(`FRESHNESS / WOW: current ${goldenMaster.creativeFreshness?.score ?? 0}/${goldenMaster.creativeFreshness?.threshold ?? 80}. Run the Creative Room again: generate genuinely competing angles, reject predictable ones, strengthen FORMAT SPICE with at least one scene-presentation device, state what production adds beyond the raw material, and choose a bolder source-defensible idea. ${goldenMaster.creativeFreshness?.deficiencies?.join(" ") || ""}`);
   }
   if (d.pace < LEPERS_GOLDEN_MASTER_FINGERPRINT.weights.pace) {
     repairs.push("PACE: keep VO cues concise, preferably 8–45 words, average roughly 12–35 words, and never exceed 55 words per cue.");
@@ -844,7 +871,7 @@ export async function GET(request: Request) {
     const quality = qualityMetricsForOutput(text, correctionTone);
     const goldenMaster = isLepersTone(correctionTone) ? scoreLepersGoldenMaster(text, finalRuntimeSeconds) : null;
     const needsCorrection =
-      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard" || Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes));
+      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard" || Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes));
 
     if (needsCorrection && correctionAttempt < MAX_BACKGROUND_CORRECTIONS) {
       const lowerWords = Number(metadata.dana_lower_words || 0);
@@ -857,10 +884,10 @@ export async function GET(request: Request) {
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
       const lepersCorrection = isLepersTone(correctionTone);
       const correctionSystem = lepersCorrection
-        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
         : `You are DANA AI's final Latvian television voice-over editor and fifth diner. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} The selected tone must remain clearly recognisable after revision.`;
       const correctionUser = lepersCorrection
-        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Replace generic descriptive VO with opinionated Fifth Dinner Guest narration. Hunt for details the participants miss and exploit running jokes/callbacks when supported. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. Preserve and develop the Second Story across the package: OTRĀ STĀSTA LĪNIJA must be a source-grounded authored premise, and OTRĀ STĀSTA ATTĪSTĪBA must carry it through setup → escalation → payoff/callback. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Current dimension scores: ${JSON.stringify(goldenMaster?.dimensions || {})}. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nPRECISION REPAIR MAP — repair deficient dimensions first and preserve dimensions already at full score:\n${goldenMasterRepairInstructions(goldenMaster)}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
+        ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Replace generic descriptive VO with opinionated Fifth Dinner Guest narration. Hunt for details the participants miss and exploit running jokes/callbacks when supported. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. Preserve and develop the Second Story across the package: OTRĀ STĀSTA LĪNIJA must be a source-grounded authored premise, and OTRĀ STĀSTA ATTĪSTĪBA must carry it through setup → escalation → payoff/callback. CREATIVE ROOM / WOW: preserve or rebuild the visible Creative Room with 3 finalists, 2 rejected predictable angles, 3+ FORMAT SPICE devices, the explicit new production value and the boldest defendable idea. Do not merely polish the same safe premise. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Current dimension scores: ${JSON.stringify(goldenMaster?.dimensions || {})}. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nPRECISION REPAIR MAP — repair deficient dimensions first and preserve dimensions already at full score:\n${goldenMasterRepairInstructions(goldenMaster)}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
         : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Every cue must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Rewrite generic descriptive VO as active Fifth Dinner Guest narration; hunt for details the participants miss and exploit callbacks when the source supports them. Remove empty “hmm”, “jā”, “traki”, “nu gan” reactions. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
       const correction = await createCorrectionResponse({
         apiKey,
@@ -893,11 +920,11 @@ export async function GET(request: Request) {
         { status: 502 },
       );
     }
-    if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes)) {
+    if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes)) {
       return NextResponse.json(
         {
           ok: false,
-          message: `DANA AI rejected the Lepers package because ${!goldenMaster.secondStory?.passes ? "the required Second Story editorial line was still missing or underdeveloped" : `Golden Master conformance remained ${goldenMaster.score}/100`}; minimum quality is ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. Reference: ${requestId}`,
+          message: `DANA AI rejected the Lepers package because ${!goldenMaster.creativeFreshness?.passes ? `Creative Freshness / WOW remained ${goldenMaster.creativeFreshness?.score ?? 0}/${goldenMaster.creativeFreshness?.threshold ?? 80}` : !goldenMaster.secondStory?.passes ? "the required Second Story editorial line was still missing or underdeveloped" : `Golden Master conformance remained ${goldenMaster.score}/100`}; minimum Golden Master quality is ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100 and WOW freshness must also pass. Reference: ${requestId}`,
           goldenMaster,
           requestId,
         },

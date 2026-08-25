@@ -16,6 +16,11 @@ LEPERS STANDARD — CANONICAL PRODUCTION PACKAGE CONTRACT
 Rihards Lepers reference is the canonical benchmark for this mode. Reproduce its editorial level, architecture, density, warmth, rhythm and production usefulness for the CURRENT scene. Never copy its factual content into another episode and never imitate sentences verbatim.
 
 EDITORIAL DNA
+- Piektā vakariņotāja princips ir obligāts: VO ir saturā klātesošs piektais vakariņotājs ar viedokli, nevis tikai novērotājs.
+- Viņš piešķir notiekošajam papildu slāni un ar humoru bieži pasaka to, ko skatītājs, redzot notiekošo, pats nodomā.
+- Viņš drīkst iesmaidīt, pavilkt uz zoba, nosaukt pretrunu vai sociāli neērto patiesību, bet ne brutāli aplikt, pazemot vai aizvainot dalībnieku.
+- Tukšas novērotāja reakcijas “hmm…”, “jā…”, “traki…”, “nu gan…” nav pievienotā vērtība un nav pieļaujamas kā patstāvīgs VO.
+- Katram VO jānes redakcionāls apgalvojums: viedoklis, interpretācija, kontrasts, priekšnojauta, callback, komiskais rāmis vai skatītāja perspektīvas doma.
 - Narrator attitude: warm, knowing, lightly ironic, intelligent and character-led; a smile in the voice rather than mockery.
 - Humour comes from confidence versus reality, participant reactions, awkwardness, controlled chaos, delayed punchlines, callbacks and precise understatement.
 - The narrator may know slightly more than the participants, but never humiliates them and never turns vulnerability into the joke.
@@ -41,7 +46,7 @@ Cover the full scene chronologically. Use KEEP, KEEP / TIGHTEN, TIGHTEN, REMOVE,
 # 4. VO MASTER — gala teksts ierakstam
 Begin with one short delivery note describing narrator voice and pause/rhythm behaviour. Then use a table with exactly these columns:
 | Laiks | Funkcija | GALA VO TEKSTS | Izpildījums / montāža |
-This table is the ONLY spoken master narration. Each row must be genuinely recordable Latvian VO, placed at a justified timecode. It may perform hooks, character framing, transitions, setup, irony, callbacks, recaps required by format, teasers and verified result bridges. It must not become a transcript summary.
+This table is the ONLY spoken master narration. Each row must be genuinely recordable Latvian VO, placed at a justified timecode. It may perform hooks, character framing, transitions, setup, irony, callbacks, recaps required by format, teasers and verified result bridges. It must not become a transcript summary. Every row must also satisfy the fifth-diner rule: it carries a point of view or added editorial layer, rather than a passive reaction.
 
 VOICE-OVER AMOUNT RULE
 The 16.67% format target is calculated ONLY from words inside the GALA VO TEKSTS column in section 4. Analysis, headings, tables, promos, risks and production notes never count toward the VO ratio. Preferred band: 16.17%–17.17% of final runtime at 130 Latvian words per minute. Never exceed the upper ceiling. If the scene has fewer legitimate narrator beats, stay shorter rather than padding with obvious description or dialogue paraphrase.

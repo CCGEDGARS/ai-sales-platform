@@ -1,0 +1,20 @@
+name: Verify Visual Evidence Pass
+
+on:
+  push:
+    branches: [feature/second-story-editorial-authorship]
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/second-story-editorial-authorship
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/visual-evidence-pass.test.mjs

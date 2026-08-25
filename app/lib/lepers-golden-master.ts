@@ -48,6 +48,12 @@ export type LepersGoldenMasterScore = {
   threshold: number;
   passes: boolean;
   dimensions: GoldenMasterDimensions;
+  secondStory: {
+    present: boolean;
+    developed: boolean;
+    signals: number;
+    passes: boolean;
+  };
   deficiencies: string[];
 };
 
@@ -90,6 +96,18 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+
+function secondStoryMetrics(source: string) {
+  const premise = source.match(/OTRĀ STĀSTA LĪNIJA\s*[:—-]\**\s*([^\n]{35,})/i);
+  const development = source.match(/OTRĀ STĀSTA ATTĪSTĪBA\s*[:—-]\**\s*([^\n]{35,})/i);
+  const authoredText = `${premise?.[1] || ""} ${development?.[1] || ""} ${voCells(source).join(" ")}`.toLocaleLowerCase("lv-LV");
+  const signals = (authoredText.match(/\b(atcerēsimies|atgriežamies|solīj|prognoz|hipotēz|jautājum|pulksten|spēl|pretstat|metafor|iron|tikmēr|bet|tomēr|vs)\b/g) || []).length +
+    (authoredText.match(/\?/g) || []).length;
+  const present = Boolean(premise);
+  const developed = Boolean(development);
+  return { present, developed, signals, passes: present && developed };
+}
+
 export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): LepersGoldenMasterScore {
   const source = String(text || "");
   const deficiencies: string[] = [];
@@ -126,7 +144,11 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
   const emptyReaction = /(^|[.!?]\s*)(hmm|hm|jā|nu jā|traki|nu gan|oho|interesanti)([.!?]|$)/i.test(joinedCues);
   const editorialSignals = (joinedCues.match(/\b(bet|taču|izskatās|tiesa|vai|tomēr|pirms|acīmredzot|laikam|kamēr)\b/g) || []).length;
   const questionSignals = (cues.join(" ").match(/\?/g) || []).length;
-  const humourAndPov = emptyReaction ? 0 : Math.round(weights.humourAndPov * clamp((editorialSignals + questionSignals * 2) / Math.max(6, cues.length), 0.65, 1));
+  const secondStory = secondStoryMetrics(source);
+  const authoredLayer = clamp((editorialSignals + questionSignals * 2 + secondStory.signals) / Math.max(6, cues.length), 0.65, 1);
+  const authorshipMultiplier = secondStory.passes ? 1 : 0.45;
+  const humourAndPov = emptyReaction ? 0 : Math.round(weights.humourAndPov * authoredLayer * authorshipMultiplier);
+  if (!secondStory.passes) deficiencies.push("Create and develop OTRĀ STĀSTA LĪNIJA from verified reality. Reflection-only VO is not enough: add a distinct authored premise and carry it through OTRĀ STĀSTA ATTĪSTĪBA as setup, escalation and payoff/callback without inventing facts.");
   if (humourAndPov < weights.humourAndPov) deficiencies.push("Strengthen the fifth-diner point of view, comic framing, contradiction and viewer-thought layer; remove passive reactions.");
 
   const cueWordCounts = cues.map(words);
@@ -161,8 +183,9 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
     name: LEPERS_GOLDEN_MASTER_NAME,
     score,
     threshold: LEPERS_GOLDEN_MASTER_THRESHOLD,
-    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD,
+    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes,
     dimensions,
+    secondStory,
     deficiencies,
   };
 }

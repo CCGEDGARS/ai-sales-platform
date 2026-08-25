@@ -6,7 +6,11 @@ on:
     paths:
       - app/page.tsx
       - tests/default-editorial-brief.test.mjs
+      - scripts/apply-editorial-brief-version-migration.py
       - .github/workflows/verify-editorial-brief-migration.yml
+
+permissions:
+  contents: write
 
 jobs:
   test-build:
@@ -14,10 +18,28 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/editorial-brief-version-migration
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+      - name: Apply versioned editorial brief migration
+        run: python3 scripts/apply-editorial-brief-version-migration.py
       - run: npm ci
       - run: node --test tests/default-editorial-brief.test.mjs
       - run: npm run build
+      - name: Commit verified production fix
+        shell: bash
+        run: |
+          if git diff --quiet app/page.tsx; then
+            echo "No production changes required."
+            exit 0
+          fi
+          git config user.name "DANA AI maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx
+          git commit -m "Fix stale Editorial brief browser migration"
+          git pull --rebase origin fix/editorial-brief-version-migration
+          git push origin HEAD:fix/editorial-brief-version-migration

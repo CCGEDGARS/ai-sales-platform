@@ -1,0 +1,25 @@
+name: Verify Golden Master rescue
+
+on:
+  push:
+    branches: [fix/golden-master-94-rescue]
+    paths:
+      - app/api/generate-voiceover/route.ts
+      - tests/golden-master-rescue.test.mjs
+      - .github/workflows/verify-golden-master-rescue.yml
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/golden-master-94-rescue
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --test tests/golden-master-rescue.test.mjs
+      - run: npm run build

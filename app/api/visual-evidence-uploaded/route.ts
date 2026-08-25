@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
 
+export const maxDuration = 300;
+
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const FALLBACK_MODEL = "gemini-2.5-flash";
@@ -68,14 +70,23 @@ export async function POST(request: Request) {
     if (!visualEvidence) {
       return NextResponse.json({ ok: false, message: "Gemini returned no visual evidence." }, { status: 502 });
     }
-    if (!/\[?\d{1,2}:\d{2}(?::\d{2})?\]?/.test(visualEvidence)) {
-      return NextResponse.json({ ok: false, message: "Gemini returned visual evidence without usable timecodes." }, { status: 502 });
+
+    const evidenceLines = visualEvidence
+      .split(/\r?\n/)
+      .map((line: string) => line.trim())
+      .filter(Boolean);
+    const validEvidenceLine = /^\[\d{2}:\d{2}:\d{2}\]\s+VISUAL:\s+\S.+$/;
+    if (!evidenceLines.length || !evidenceLines.every((line: string) => validEvidenceLine.test(line))) {
+      return NextResponse.json(
+        { ok: false, message: "Gemini returned visual evidence outside the strict [HH:MM:SS] VISUAL factual-log format." },
+        { status: 502 },
+      );
     }
 
     return NextResponse.json({
       ok: true,
       fileName: originalFile,
-      visualEvidence,
+      visualEvidence: evidenceLines.join("\n"),
       model,
       timecodes: true,
       evidenceType: "observable-facts-only",

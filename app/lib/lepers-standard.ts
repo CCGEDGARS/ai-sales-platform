@@ -13,7 +13,7 @@ export const LEPERS_REQUIRED_SECTIONS = [
 export const LEPERS_PRODUCTION_PACKAGE_CONTRACT = `
 LEPERS GOLDEN MASTER — LOCKED 10/10 PRODUCTION PACKAGE CONTRACT
 
-Rihards Lepers reference is the canonical Golden Master benchmark for this mode. Reproduce its editorial level, architecture, density, warmth, rhythm, humour intelligence, VO amount and production usefulness for the CURRENT scene. Never copy its factual content into another episode and never imitate sentences verbatim.
+Rihards Lepers reference is the canonical benchmark and the canonical Golden Master benchmark for this mode. Reproduce its editorial level, architecture, density, warmth, rhythm, humour intelligence, VO amount and production usefulness for the CURRENT scene. Never copy its factual content into another episode and never imitate sentences verbatim.
 
 Variation is allowed in content, never in production standard.
 

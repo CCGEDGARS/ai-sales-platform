@@ -84,16 +84,18 @@ test("large video bytes go through the controlled native upload proxy instead of
   assert.match(worker, /async for chunk in request\.stream\(\)/);
 });
 
-test("voice-over generation is latency-bounded and has a fast model fallback", () => {
-  assert.match(voiceoverRoute, /export const maxDuration = 120/);
-  assert.match(voiceoverRoute, /PRIMARY_VOICEOVER_MODEL = "gpt-5\.6-sol"/);
-  assert.match(voiceoverRoute, /FALLBACK_VOICEOVER_MODEL = "gpt-5\.6-terra"/);
-  assert.match(voiceoverRoute, /AbortController/);
-  assert.match(voiceoverRoute, /OPENAI_CALL_TIMEOUT_MS = 45_000/);
-  assert.match(voiceoverRoute, /effort: "low"/);
-  assert.doesNotMatch(voiceoverRoute, /mode: "pro"/);
-  assert.doesNotMatch(voiceoverRoute, /effort: "max"/);
-  assert.match(voiceoverRoute, /responseText/);
-  assert.match(voiceoverRoute, /ratioMetrics/);
-  assert.match(voiceoverRoute, /rewriteCount/);
+test("voice-over generation uses durable OpenAI background jobs instead of one long Vercel request", () => {
+  assert.match(voiceoverRoute, /background:\s*true/);
+  assert.match(voiceoverRoute, /export async function GET/);
+  assert.match(voiceoverRoute, /\/responses\/\$\{encodeURIComponent\(responseId\)\}/);
+  assert.match(voiceoverRoute, /status === "in_progress"|status === "queued"/);
+  assert.match(page, /pollVoiceoverJob/);
+  assert.match(page, /responseId/);
+  assert.match(page, /window\.setTimeout/);
+});
+
+test("validated transcript survives a refresh so a new frontend can resume voice-over generation", () => {
+  assert.match(page, /dana-ai-transcript-session/);
+  assert.match(page, /window\.localStorage\.setItem\([\s\S]*dana-ai-transcript-session/);
+  assert.match(page, /setTranscriptResults\([\s\S]*saved/);
 });

@@ -93,3 +93,17 @@ test("voice-over backend cannot repeat the 300-second synchronous timeout archit
   assert.match(voiceoverRoute, /setTimeout\(\(\) => controller\.abort\(\), 50_000\)/);
   assert.match(voiceoverRoute, /x-dana-voiceover-mode/);
 });
+
+test("a downloaded transcript can be imported and immediately unlock voice-over", () => {
+  assert.match(page, /transcriptImportInput/);
+  assert.match(page, /accept="\.txt,\.srt,\.vtt,\.docx"/);
+  assert.match(page, /Import existing transcript/);
+  assert.match(page, /onTranscriptImport/);
+  assert.match(page, /setTranscriptResults\(\[/);
+  assert.match(page, /inferRuntimeFromTranscript/);
+  assert.equal(fs.existsSync("app/api/import-transcript/route.ts"), true);
+  const importer = fs.readFileSync("app/api/import-transcript/route.ts", "utf8");
+  assert.match(importer, /mammoth/);
+  assert.match(importer, /\.docx/);
+  assert.equal(typeof pkg.dependencies?.mammoth, "string");
+});

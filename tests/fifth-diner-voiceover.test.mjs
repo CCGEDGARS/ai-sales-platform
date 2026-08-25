@@ -32,5 +32,5 @@ test("Lepers canonical contract defines narrator as the fifth dinner guest", () 
   assert.match(lepers, /piekt[aā] vakari[ņn]ot[aā]ja/i);
   assert.match(lepers, /viedokli/i);
   assert.match(lepers, /skat[iī]t[aā]j/i);
-  assert.match(lepers, /nav tikai nov[eē]rot[aā]js/i);
+  assert.match(lepers, /(?:nav|nevis) tikai nov[eē]rot[aā]js/i);
 });

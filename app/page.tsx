@@ -1206,7 +1206,7 @@ export default function Home() {
           tone: voiceoverTone,
           context: buildReferenceBrief(appliedSources),
           appliedSources,
-          finalRuntimeSeconds,
+          finalRuntimeSeconds: effectiveRuntimeSeconds,
         }),
       });
       const raw = await response.text();
@@ -1297,6 +1297,8 @@ export default function Home() {
       .join("\n\n") ||
     transcriptionMessage ||
     "No transcript has been returned yet.";
+  const effectiveRuntimeSeconds =
+    finalRuntimeSeconds || inferRuntimeFromTranscript(transcriptText);
   const workflowStates = [
     "ready",
     processed ? "ready" : "active",
@@ -1986,8 +1988,8 @@ export default function Home() {
                 <strong>
                   {voiceoverMetrics
                     ? `${voiceoverMetrics.ratioPercent}% · ${voiceoverMetrics.words} words`
-                    : finalRuntimeSeconds > 0
-                      ? `Target ≈ ${Math.round((finalRuntimeSeconds / 6 / 60) * 130)} words`
+                    : effectiveRuntimeSeconds > 0
+                      ? `Target ≈ ${Math.round((effectiveRuntimeSeconds / 6 / 60) * 130)} words`
                       : "Runtime required"}
                 </strong>
               </div>

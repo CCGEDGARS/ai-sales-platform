@@ -112,6 +112,20 @@ function modelUnavailable(response: Response, data: OpenAIResponseData) {
   );
 }
 
+function inferRuntimeFromTranscript(text: string) {
+  const matches = Array.from(
+    String(text || "").matchAll(/(?:^|\n|\s)\[?(\d{1,2}):(\d{2}):(\d{2})(?:[,.]\d{1,3})?\]?/g),
+  );
+  const latest = matches.reduce((max, match) => {
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    if (minutes > 59 || seconds > 59) return max;
+    return Math.max(max, hours * 3600 + minutes * 60 + seconds);
+  }, 0);
+  return latest > 0 ? latest + 2 : 0;
+}
+
 function wordTargets(finalRuntimeSeconds: number) {
   return {
     targetWords: Math.round(((finalRuntimeSeconds * VOICEOVER_RATIO_TARGET) / 60) * VOICEOVER_WPM),
@@ -257,10 +271,20 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const finalRuntimeSeconds = Number(body.finalRuntimeSeconds || 0);
+    const providedRuntimeSeconds = Number(body.finalRuntimeSeconds || 0);
+    const inferredRuntimeSeconds = inferRuntimeFromTranscript(body.transcript || "");
+    const finalRuntimeSeconds =
+      Number.isFinite(providedRuntimeSeconds) && providedRuntimeSeconds > 0
+        ? providedRuntimeSeconds
+        : inferredRuntimeSeconds;
     if (!Number.isFinite(finalRuntimeSeconds) || finalRuntimeSeconds <= 0) {
       return NextResponse.json(
-        { ok: false, message: "The final video runtime is required so the mandatory voice-over ratio can be enforced.", requestId },
+        {
+          ok: false,
+          message:
+            "DANA AI could not determine the scene runtime. Import a timecoded transcript (HH:MM:SS) or transcribe the source video before generating voice-over.",
+          requestId,
+        },
         { status: 400 },
       );
     }

@@ -31,7 +31,11 @@ EDITORIAL DNA
 - Viņš piešķir notiekošajam papildu slāni un ar humoru bieži pasaka to, ko skatītājs, redzot notiekošo, pats nodomā.
 - Viņš drīkst iesmaidīt, pavilkt uz zoba, nosaukt pretrunu vai sociāli neērto patiesību, bet ne brutāli aplikt, pazemot vai aizvainot dalībnieku.
 - Tukšas novērotāja reakcijas “hmm…”, “jā…”, “traki…”, “nu gan…” nav pievienotā vērtība un nav pieļaujamas kā patstāvīgs VO.
-- Katram VO jānes redakcionāls apgalvojums: viedoklis, interpretācija, kontrasts, priekšnojauta, callback, komiskais rāmis vai skatītāja perspektīvas doma.
+- Katram VO jānes redakcionāls apgalvojums: viedoklis, interpretācija, kontrasts, priekšnojauta, callback, komiskais rāmis, skatītāja perspektīvas doma, iekšējais dialogs vai neacīmredzama detaļa.
+- VO aktīvi meklē detaļas, ko dalībnieki nepamana vai nepasaka: skatienus, klusumu, vilcināšanos, dīvainus priekšmetus, laika kļūdas, aizmirstas sastāvdaļas, pretrunas, dubultnozīmes, fona reakcijas un pārliecinošus solījumus, kuriem realitāte vēlāk iebilst.
+- Ja avots to atbalsta, epizodē identificēt 2–4 running gag / callback iespējas un atgriezties pie iepriekšējiem solījumiem, prognozēm vai lielīgiem apgalvojumiem.
+- Iekšējais dialogs ir atļauts un vēlams, ja tas dod skatītājam dzīvu līdzdomāšanas sajūtu, nevis atkārto redzamo.
+- Zelta tests: ja generic documentary narrator varētu pateikt šo pašu frāzi, tā jāpārraksta. Ja frāzes izņemšana neko neatņem izklaidei, emocijai, raksturam vai dramaturģijai, tā jādzēš.
 - Narrator attitude: warm, knowing, lightly ironic, intelligent and character-led; a smile in the voice rather than mockery.
 - Humour comes from confidence versus reality, participant reactions, awkwardness, controlled chaos, delayed punchlines, callbacks and precise understatement.
 - The narrator may know slightly more than the participants, but never humiliates them and never turns vulnerability into the joke.

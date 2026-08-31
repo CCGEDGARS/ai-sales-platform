@@ -66,7 +66,6 @@ jobs:
             '["03", "Story analysis", "Editorial intelligence"]': '["03", "Story shaping", "Beats, contradictions + callbacks"]',
             '["04", "Voice-over", "Editor-ready script"]': '["04", "Tailored voice-over", "PRIMARY · Fifth Dinner Guest"]',
             '<h1>Production workspace</h1>': '<h1>Tailored Voice-over Studio</h1>',
-            '<div className="section-label">PRODUCTION FLOW': '<div className="section-label">TAILORED VOICE-OVER PRODUCTION FLOW',
             '<div className="eyebrow">STAGE 04 · EDITORIAL VOICE</div>': '<div className="eyebrow">PRIMARY TASK · TAILORED VOICE-OVER</div>',
             '<h3>Shape the story with voice-over</h3>': '<h3>Create tailored voice-over</h3>',
             'Activate this stage after transcript review. The script must sharpen the scene—not explain what the audience can already see.': 'This is DANA Studio’s main task. Create a scene-specific voice-over that follows the full concept: Fifth Dinner Guest, Second Story, WOW creative authorship, Narrator Presence and Golden Master discipline—without explaining what the audience can already see.',

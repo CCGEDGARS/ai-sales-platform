@@ -45,6 +45,33 @@ jobs:
           Path('/tmp/apply-upgrade.py').write_text('\n'.join(out) + '\n')
           PY
           python3 /tmp/apply-upgrade.py
+      - name: Preserve WOW regressions and independent presence scoring
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          page = Path('app/page.tsx')
+          s = page.read_text()
+          old_brief = "Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive. The narrator is the invisible fifth dinner guest and must be recognisably present across the scene: react directly to participant statements, question or challenge weak logic, occasionally address participants, remember promises and contradictions, and build callbacks/running jokes from verified behaviour. Short live reactions are allowed when the exact moment earns them. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Presence does not mean more VO: keep narration selective near 16.67%. Never invent reality or humiliate participants."
+          new_brief = "Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive: do not submit the first reasonable idea. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Fifth Dinner Guest VO must surprise, not reflect. Never invent reality or humiliate participants; keep VO selective near 16.67%. The narrator is the invisible fifth dinner guest and must be recognisably and conversationally present across the scene: directly react to participant statements, question or challenge weak logic, occasionally address participants, remember promises and contradictions, and build callbacks/running jokes from verified behaviour. Short live reactions are allowed when the exact moment earns them. Presence does not mean more VO."
+          if old_brief not in s:
+              raise SystemExit('Expected transformed default brief not found')
+          s = s.replace(old_brief, new_brief, 1)
+          current_schema = 'const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-31-active-fifth-diner-v6";'
+          if current_schema not in s:
+              raise SystemExit('Current schema marker not found')
+          s = s.replace(current_schema, 'const PREVIOUS_EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-wow-creative-room-v5";\n' + current_schema, 1)
+          page.write_text(s)
+
+          golden = Path('app/lib/lepers-golden-master.ts')
+          g = golden.read_text()
+          capped = '  const rawScore = Object.values(dimensions).reduce((sum, value) => sum + value, 0);\n  const score = narratorPresence.passes ? rawScore : Math.min(rawScore, LEPERS_GOLDEN_MASTER_THRESHOLD - 1);\n'
+          independent = '  const score = Object.values(dimensions).reduce((sum, value) => sum + value, 0);\n'
+          if capped not in g:
+              raise SystemExit('Expected temporary narrator score cap not found')
+          golden.write_text(g.replace(capped, independent, 1))
+          PY
       - name: Verify focused narrator-presence tests
         run: node --experimental-strip-types --test tests/narrator-presence-behaviour.test.mjs tests/narrator-presence-gate.test.mjs
       - name: Verify complete test suite

@@ -1,4 +1,5 @@
 import { LEPERS_REQUIRED_SECTIONS } from "./lepers-standard";
+import { narratorPresenceMetrics, type NarratorPresenceMetrics } from "./narrator-presence";
 
 export const LEPERS_GOLDEN_MASTER_NAME = "Lepers Golden Master · locked 10/10 benchmark";
 export const LEPERS_GOLDEN_MASTER_THRESHOLD = 95;
@@ -55,6 +56,7 @@ export type LepersGoldenMasterScore = {
     signals: number;
     passes: boolean;
   };
+  narratorPresence: NarratorPresenceMetrics;
   creativeFreshness: {
     score: number;
     threshold: number;
@@ -206,11 +208,13 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
   const editorialSignals = (joinedCues.match(/\b(bet|taču|izskatās|tiesa|vai|tomēr|pirms|acīmredzot|laikam|kamēr)\b/g) || []).length;
   const questionSignals = (cues.join(" ").match(/\?/g) || []).length;
   const secondStory = secondStoryMetrics(source);
+  const narratorPresence = narratorPresenceMetrics(cues);
   const creativeFreshness = creativeFreshnessMetrics(source);
   const authoredLayer = clamp((editorialSignals + questionSignals * 2 + secondStory.signals) / Math.max(6, cues.length), 0.65, 1);
   const authorshipMultiplier = secondStory.passes ? 1 : 0.45;
   const humourAndPov = emptyReaction ? 0 : Math.round(weights.humourAndPov * authoredLayer * authorshipMultiplier);
   if (!secondStory.passes) deficiencies.push("Create and develop OTRĀ STĀSTA LĪNIJA from verified reality. Reflection-only VO is not enough: add a distinct authored premise and carry it through OTRĀ STĀSTA ATTĪSTĪBA as setup, escalation and payoff/callback without inventing facts.");
+  if (!narratorPresence.passes) deficiencies.push(`Narrator Presence ${narratorPresence.score}/${narratorPresence.threshold}: ${narratorPresence.deficiencies.join(" ")}`);
   if (!creativeFreshness.passes) deficiencies.push(`Creative Freshness / WOW ${creativeFreshness.score}/${creativeFreshness.threshold}: ${creativeFreshness.deficiencies.join(" ")}`);
   if (humourAndPov < weights.humourAndPov) deficiencies.push("Strengthen the fifth-diner point of view, comic framing, contradiction and viewer-thought layer; remove passive reactions.");
 
@@ -246,9 +250,10 @@ export function scoreLepersGoldenMaster(text: string, runtimeSeconds: number): L
     name: LEPERS_GOLDEN_MASTER_NAME,
     score,
     threshold: LEPERS_GOLDEN_MASTER_THRESHOLD,
-    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes && creativeFreshness.passes,
+    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes && creativeFreshness.passes && narratorPresence.passes,
     dimensions,
     secondStory,
+    narratorPresence,
     creativeFreshness,
     deficiencies,
   };

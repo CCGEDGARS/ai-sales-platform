@@ -1,0 +1,45 @@
+name: Apply narrator presence v6
+
+on:
+  push:
+    branches:
+      - dana-active-fifth-diner-v6
+    paths:
+      - scripts/apply-narrator-presence-v6.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: dana-active-fifth-diner-v6
+          fetch-depth: 0
+
+      - name: Apply narrator presence upgrade
+        run: python3 scripts/apply-narrator-presence-v6.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run complete test suite
+        run: npm test
+
+      - name: Build production app
+        run: npm run build
+
+      - name: Commit verified upgrade
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts app/lib/lepers-golden-master.ts app/page.tsx tests/default-editorial-brief.test.mjs
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "Enforce active fifth dinner guest narrator presence"
+            git push origin HEAD:dana-active-fifth-diner-v6
+          fi

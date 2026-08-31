@@ -68,7 +68,7 @@ jobs:
             '["01", "Knowledge base", "Reference library"]': '["01", "Source intelligence", "References + verified material"]',
             '["02", "Transcription", "Authentic timecoded transcript"]': '["02", "Transcript foundation", "Authentic timecoded evidence"]',
             '["03", "Story analysis", "Editorial intelligence"]': '["03", "Story shaping", "Beats, contradictions + callbacks"]',
-            '["04", "Voice-over", "Editor-ready script"]': '["04", "Tailored voice-over", "PRIMARY · Fifth Dinner Guest"]',
+            '["04", "Voice-over", "Editor-ready script"]': '["04", "Tailored voice-over", "PRIMARY · Fifth Dinner Guest · Narrator Presence"]',
             '<h1>Production workspace</h1>': '<h1>Tailored Voice-over Studio</h1>',
             '<div className="eyebrow">STAGE 04 · EDITORIAL VOICE</div>': '<div className="eyebrow">PRIMARY TASK · TAILORED VOICE-OVER</div>',
             '<h3>Shape the story with voice-over</h3>': '<h3>Create tailored voice-over</h3>',

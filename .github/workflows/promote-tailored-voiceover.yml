@@ -1,0 +1,109 @@
+name: Promote Tailored Voice-over Primary Task
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/promote-tailored-voiceover.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Write failing primary-task regression test
+        shell: bash
+        run: |
+          cat > tests/tailored-voiceover-primary-task.test.mjs <<'EOF'
+          import test from "node:test";
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+
+          const page = fs.readFileSync("app/page.tsx", "utf8");
+          const route = fs.readFileSync("app/api/generate-voiceover/route.ts", "utf8");
+
+          test("tailored voice-over is the primary product task in the workspace", () => {
+            assert.match(page, /Tailored Voice-over Studio/);
+            assert.match(page, /PRIMARY TASK · TAILORED VOICE-OVER/);
+            assert.match(page, /Create tailored voice-over/);
+            assert.match(page, /Fifth Dinner Guest.*Second Story.*WOW.*Narrator Presence.*Golden Master/s);
+          });
+
+          test("generation and all repair paths preserve the tailored voice-over mission", () => {
+            assert.match(route, /PRIMARY PRODUCT MISSION — TAILORED VOICE-OVER/);
+            assert.match(route, /main job is to create a scene-specific, tailored voice-over/i);
+            const uses = route.match(/\$\{TAILORED_VOICEOVER_MISSION_RULES\}/g) || [];
+            assert.ok(uses.length >= 4, `expected mission in generation, recovery and correction paths, got ${uses.length}`);
+          });
+          EOF
+          if node --test tests/tailored-voiceover-primary-task.test.mjs; then
+            echo 'Expected RED test before implementation, but it passed.'
+            exit 1
+          fi
+      - name: Promote tailored voice-over mission in product and generation system
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          page_path = Path('app/page.tsx')
+          page = page_path.read_text()
+          replacements = {
+            '["01", "Knowledge base", "Reference library"]': '["01", "Source intelligence", "References + verified material"]',
+            '["02", "Transcription", "Authentic timecoded transcript"]': '["02", "Transcript foundation", "Authentic timecoded evidence"]',
+            '["03", "Story analysis", "Editorial intelligence"]': '["03", "Story shaping", "Beats, contradictions + callbacks"]',
+            '["04", "Voice-over", "Editor-ready script"]': '["04", "Tailored voice-over", "PRIMARY · Fifth Dinner Guest"]',
+            '<h1>Production workspace</h1>': '<h1>Tailored Voice-over Studio</h1>',
+            '<div className="section-label">PRODUCTION FLOW': '<div className="section-label">TAILORED VOICE-OVER PRODUCTION FLOW',
+            '<div className="eyebrow">STAGE 04 · EDITORIAL VOICE</div>': '<div className="eyebrow">PRIMARY TASK · TAILORED VOICE-OVER</div>',
+            '<h3>Shape the story with voice-over</h3>': '<h3>Create tailored voice-over</h3>',
+            'Activate this stage after transcript review. The script must sharpen the scene—not explain what the audience can already see.': 'This is DANA Studio’s main task. Create a scene-specific voice-over that follows the full concept: Fifth Dinner Guest, Second Story, WOW creative authorship, Narrator Presence and Golden Master discipline—without explaining what the audience can already see.',
+            'Generate Lepers Golden Master package': 'Create tailored voice-over package',
+          }
+          for old, new in replacements.items():
+            if old not in page:
+              raise SystemExit(f'Missing page replacement anchor: {old}')
+            page = page.replace(old, new)
+          page_path.write_text(page)
+
+          route_path = Path('app/api/generate-voiceover/route.ts')
+          route = route_path.read_text()
+          anchor = 'const GLOBAL_SCENE_DIRECTIVE_RULES = `\n'
+          if anchor not in route:
+            raise SystemExit('Missing route mission insertion anchor')
+          mission = '''const TAILORED_VOICEOVER_MISSION_RULES = `\nPRIMARY PRODUCT MISSION — TAILORED VOICE-OVER\n- DANA AI’s main job is to create a scene-specific, tailored voice-over for the actual people, dialogue, behaviour, visual evidence, story beats and editorial brief in the current material.\n- Never output generic reusable narration. Every intervention must feel written for THIS scene and THIS participant dynamic.\n- Tailoring is not a separate style option. It is the permanent operating mode beneath every tone: source-grounded character specificity, exact-moment reaction, story function, editorial point of view and production usefulness.\n- The full DANA concept remains mandatory inside every tailored result: Fifth Dinner Guest behaviour, Second Story authorship, WOW / Creative Room ambition, Format Spice where supported, Narrator Presence, Golden Master conformance, factual discipline, participant dignity and selective 16.67% VO quantity.\n- Use transcript and visual evidence as the factual substrate; use references as editorial/style benchmarks, never as a source of transferred facts.\n- Before release, ask: “Could this voice-over have been written for another episode?” If yes, it is not tailored enough and must be rewritten.\n`.trim();\n\n'''
+          route = route.replace(anchor, mission + anchor, 1)
+          marker = '${PRIMARY_NARRATOR_PRESENCE_RULES}'
+          count = route.count(marker)
+          if count < 4:
+            raise SystemExit(f'Expected >=4 narrator rule injections, found {count}')
+          route = route.replace(marker, '${TAILORED_VOICEOVER_MISSION_RULES}\n\n${PRIMARY_NARRATOR_PRESENCE_RULES}')
+          route_path.write_text(route)
+          PY
+      - name: Verify primary-task regression test
+        run: node --test tests/tailored-voiceover-primary-task.test.mjs
+      - name: Verify complete test suite
+        run: npm test
+      - name: Verify production build
+        run: npm run build
+      - name: Commit verified product hierarchy and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name "DANA AI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/page.tsx app/api/generate-voiceover/route.ts tests/tailored-voiceover-primary-task.test.mjs
+          git rm .github/workflows/promote-tailored-voiceover.yml
+          git commit -m "feat: make tailored voiceover DANA Studio primary task"
+          git push origin HEAD:main

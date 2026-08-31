@@ -1,176 +1,21 @@
-name: DANA Active Fifth Diner Upgrade
+name: DANA Fifth Diner Smoke Test
 
 on:
   push:
-    branches: [dana-active-fifth-diner-v6]
+    branches:
+      - dana-active-fifth-diner-v6
     paths:
       - '.github/workflows/dana-fifth-diner-upgrade.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  upgrade:
+  smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: dana-active-fifth-diner-v6
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - name: Apply narrator presence integration
-        shell: bash
+      - name: Verify repository checkout
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              s = p.read_text()
-              if old not in s:
-                  raise SystemExit(f'Missing expected pattern in {path}: {old[:120]!r}')
-              p.write_text(s.replace(old, new, 1))
-
-          def replace_all(path, old, new):
-              p = Path(path)
-              s = p.read_text()
-              if old not in s:
-                  raise SystemExit(f'Missing expected pattern in {path}: {old[:120]!r}')
-              p.write_text(s.replace(old, new))
-
-          route = 'app/api/generate-voiceover/route.ts'
-          replace_once(route,
-              'import { LEPERS_GOLDEN_MASTER_FINGERPRINT, LEPERS_GOLDEN_MASTER_NAME, LEPERS_GOLDEN_MASTER_THRESHOLD, scoreLepersGoldenMaster } from "../../lib/lepers-golden-master";\n',
-              'import { LEPERS_GOLDEN_MASTER_FINGERPRINT, LEPERS_GOLDEN_MASTER_NAME, LEPERS_GOLDEN_MASTER_THRESHOLD, scoreLepersGoldenMaster } from "../../lib/lepers-golden-master";\nimport { narratorPresenceMetrics } from "../../lib/narrator-presence";\n')
-
-          anchor = 'const FIFTH_DINER_EDITORIAL_RULES = `\n'
-          primary = '''const PRIMARY_NARRATOR_PRESENCE_RULES = `
-PRIMARY VO BEHAVIOUR RULE — ACTIVE FIFTH DINNER GUEST
-- This is the highest-priority narrator behaviour rule for Gandrīz ideālas vakariņas. It overrides generic documentary narration and remains active in every tone, rewrite, correction, shortening, fact-check and Golden Master pass.
-- The narrator must feel CONVERSATIONALLY PRESENT in the room, not like a polished observer floating above the programme.
-- Behave like an invisible fifth participant who reacts in real time: answer participant statements, challenge weak logic, question confidence, warn, agree, disagree, correct, tease, predict and occasionally directly address a participant as though they could hear the narrator.
-- Direct participant-facing remarks are encouraged when natural. Do not force names into every cue.
-- Build an alliance with the viewer. The narrator is the viewer’s intelligent, slightly mischievous inner voice and may say the socially obvious thing the room leaves unsaid.
-- Maintain recognisable narrator presence across the OPENING, MIDDLE and CLOSING development whenever legitimate VO opportunities exist. One isolated joke does not satisfy this rule.
-- Keep a memory ledger: participant promises, boasts, labels, predictions, contradictions and unusual habits may become callbacks or running jokes later. When the source gives a setup, remember it.
-- Character labels and running jokes must grow from participant behaviour and verified material, never from invented traits.
-- Prefer conversational rhythm over over-written prose. A short reactive intervention can be stronger than a polished explanatory sentence.
-- The narrator may argue with the logic of a statement or situation, but never with a participant’s dignity.
-- Presence does NOT mean more VO. Preserve selective narration and the 16.67% format target. Improve distribution, attitude and interaction rather than padding runtime.
-- FINAL PRESENCE TEST: across the scene, can the audience recognise one intelligent fifth guest who has been listening, remembering and reacting? If not, rewrite before release.
-`.trim();
-
-'''
-          replace_once(route, anchor, primary + anchor)
-
-          p = Path(route)
-          s = p.read_text()
-          s = s.replace('    "oho",\n    "ak vai",\n    "interesanti",\n    "nu ko",\n', '')
-          p.write_text(s)
-
-          replace_once(route,
-              '  const fifthDinerPasses = editorialValuePasses;\n  const requiresEditorialCorrection = !editorialValuePasses;\n  const formatPasses =\n    cueCount > 0 &&\n    nonCueLines.length === 0 &&\n    oversizedCues === 0 &&\n    editorialValuePasses;\n',
-              '  const narratorPresence = narratorPresenceMetrics(cueLines);\n  const fifthDinerPasses = editorialValuePasses && narratorPresence.passes;\n  const requiresEditorialCorrection = !fifthDinerPasses;\n  const formatPasses =\n    cueCount > 0 &&\n    nonCueLines.length === 0 &&\n    oversizedCues === 0 &&\n    fifthDinerPasses;\n')
-          replace_once(route,
-              '    genericDescriptiveCues,\n    editorialValuePasses,\n',
-              '    genericDescriptiveCues,\n    narratorPresence,\n    editorialValuePasses,\n')
-
-          replace_once(route,
-              '  const fifthDinerPasses = editorialValuePasses;\n  const requiresEditorialCorrection = !editorialValuePasses;\n  return {\n',
-              '  const narratorPresence = narratorPresenceMetrics(masterCueTexts);\n  const fifthDinerPasses = editorialValuePasses && narratorPresence.passes;\n  const requiresEditorialCorrection = !fifthDinerPasses;\n  return {\n')
-          replace_once(route,
-              '    genericDescriptiveCues,\n    editorialValuePasses,\n    fifthDinerPasses,\n',
-              '    genericDescriptiveCues,\n    narratorPresence,\n    editorialValuePasses,\n    fifthDinerPasses,\n')
-          replace_once(route,
-              '      editorialValuePasses,\n  };\n}\n\nfunction qualityMetricsForOutput',
-              '      fifthDinerPasses,\n  };\n}\n\nfunction qualityMetricsForOutput')
-
-          replace_all(route, '${FIFTH_DINER_EDITORIAL_RULES}', '${PRIMARY_NARRATOR_PRESENCE_RULES}\n\n${FIFTH_DINER_EDITORIAL_RULES}')
-
-          replace_once(route,
-              'Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes));',
-              'Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes));')
-          replace_once(route,
-              'if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes)) {',
-              'if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes)) {')
-          replace_once(route,
-              'message: `DANA AI rejected the generated output because it did not satisfy the selected editorial format contract. Reference: ${requestId}`',
-              'message: `DANA AI rejected the generated output because it did not satisfy the selected editorial format / narrator-presence contract${quality.narratorPresence ? ` (Narrator Presence ${quality.narratorPresence.score}/${quality.narratorPresence.threshold})` : ""}. Reference: ${requestId}`')
-          replace_once(route,
-              'if (goldenMaster && (!goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes)) {',
-              'if (goldenMaster && (!goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes)) {')
-
-          standard = 'app/lib/lepers-standard.ts'
-          replace_once(standard,
-              'EDITORIAL DNA\n- Piektā vakariņotāja princips ir obligāts:',
-              '''EDITORIAL DNA
-- PRIMARY NARRATOR PRESENCE — OBLIGĀTS: piektais vakariņotājs nav tikai “asprātīgs VO”. Viņš ir sarunā klātesošs tēls visā epizodes attīstībā. Ja materiāls dod iespēju, VO tieši reaģē uz dalībnieka teikto, uzdod jautājumu, apstrīd loģiku, brīdina, piekrīt/nepiekrīt, pavelk uz zoba vai tieši uzrunā dalībnieku. Viena laba ironiska frāze visā ainā nav pietiekama.
-- VO veido aliansi ar skatītāju: tas ir skatītāja inteliģentais iekšējais komentārs, kurš pamana to, ko istabā nepasaka skaļi.
-- Klātbūtnei jābūt atpazīstamai sākumā, vidū un noslēguma attīstībā, ja tur ir leģitīmi VO logi. Klātbūtne nenozīmē lielāku VO apjomu; 16.67% princips paliek spēkā.
-- VO uztur atmiņu: solījumi, lielīgi apgalvojumi, prognozes, pretrunas, raksturīgi paradumi un agrāki joki ir potenciāli setup/callback materiāli. Ja avots dod setup, vēlāk pārbaudīt, vai realitāte dod payoff.
-- Priekšroka sarunvalodīgai, reaktīvai frāzei, ja tā ir stiprāka par nopulētu skaidrojošu teikumu. Īsas reakcijas, piemēram, “Ak vai!”, “Tiešām?”, “Uzmanīgi!” vai “Lieliski!”, NAV automātiski vājas; tās vērtē pēc konkrētā konteksta, laika un attiecībām ar dalībnieka teikto.
-- Gala tests: vai skatītājs visā ainā var atpazīt vienu un to pašu inteliģento piekto viesi, kurš klausās, atceras un reaģē? Ja nē, VO jāpārraksta.
-- Piektā vakariņotāja princips ir obligāts:''')
-          replace_once(standard,
-              'Every row must also satisfy the fifth-diner rule: it carries a point of view or added editorial layer, rather than a passive reaction. When relevant,',
-              'Every row must also satisfy the fifth-diner rule: it carries a point of view or added editorial layer, rather than a passive reaction. Across the section as a whole, narrator behaviour must pass the separate Narrator Presence gate: conversational reactions, questions, challenges and participant-facing remarks must be distributed through the scene rather than concentrated in one isolated joke, and earlier claims should be remembered or called back when the source supports it. When relevant,')
-          replace_once(standard,
-              'DANA AI must pass both the locked Golden Master conformance threshold and the separate Creative Freshness / WOW threshold before release.',
-              'DANA AI must pass the locked Golden Master conformance threshold, the separate Creative Freshness / WOW threshold, and the separate Narrator Presence threshold before release.')
-
-          gm = 'app/lib/lepers-golden-master.ts'
-          replace_once(gm,
-              'import { LEPERS_REQUIRED_SECTIONS } from "./lepers-standard";\n',
-              'import { LEPERS_REQUIRED_SECTIONS } from "./lepers-standard";\nimport { narratorPresenceMetrics, type NarratorPresenceMetrics } from "./narrator-presence";\n')
-          replace_once(gm,
-              '  creativeFreshness: {\n',
-              '  narratorPresence: NarratorPresenceMetrics;\n  creativeFreshness: {\n')
-          replace_once(gm,
-              '  const secondStory = secondStoryMetrics(source);\n  const creativeFreshness = creativeFreshnessMetrics(source);\n',
-              '  const secondStory = secondStoryMetrics(source);\n  const narratorPresence = narratorPresenceMetrics(cues);\n  const creativeFreshness = creativeFreshnessMetrics(source);\n')
-          replace_once(gm,
-              '  if (!creativeFreshness.passes) deficiencies.push(`Creative Freshness / WOW ${creativeFreshness.score}/${creativeFreshness.threshold}: ${creativeFreshness.deficiencies.join(" ")}`);\n',
-              '  if (!narratorPresence.passes) deficiencies.push(`Narrator Presence ${narratorPresence.score}/${narratorPresence.threshold}: ${narratorPresence.deficiencies.join(" ")}`);\n  if (!creativeFreshness.passes) deficiencies.push(`Creative Freshness / WOW ${creativeFreshness.score}/${creativeFreshness.threshold}: ${creativeFreshness.deficiencies.join(" ")}`);\n')
-          replace_once(gm,
-              '  const score = Object.values(dimensions).reduce((sum, value) => sum + value, 0);\n',
-              '  const rawScore = Object.values(dimensions).reduce((sum, value) => sum + value, 0);\n  const score = narratorPresence.passes ? rawScore : Math.min(rawScore, LEPERS_GOLDEN_MASTER_THRESHOLD - 1);\n')
-          replace_once(gm,
-              '    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes && creativeFreshness.passes,\n',
-              '    passes: score >= LEPERS_GOLDEN_MASTER_THRESHOLD && secondStory.passes && creativeFreshness.passes && narratorPresence.passes,\n')
-          replace_once(gm,
-              '    secondStory,\n    creativeFreshness,\n',
-              '    secondStory,\n    narratorPresence,\n    creativeFreshness,\n')
-
-          page = 'app/page.tsx'
-          replace_once(page,
-              '  creativeFreshness?: {\n',
-              '  narratorPresence?: {\n    score: number;\n    threshold: number;\n    passes: boolean;\n    deficiencies: string[];\n  };\n  creativeFreshness?: {\n')
-          replace_once(page,
-              "const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive: do not submit the first reasonable idea. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Fifth Dinner Guest VO must surprise, not reflect. Never invent reality or humiliate participants; keep VO selective near 16.67%.';",
-              "const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive. The narrator is the invisible fifth dinner guest and must be recognisably present across the scene: react directly to participant statements, question or challenge weak logic, occasionally address participants, remember promises and contradictions, and build callbacks/running jokes from verified behaviour. Short live reactions are allowed when the exact moment earns them. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Presence does not mean more VO: keep narration selective near 16.67%. Never invent reality or humiliate participants.';")
-          replace_once(page,
-              'const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-wow-creative-room-v5";',
-              'const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-31-active-fifth-diner-v6";')
-
-          test = Path('tests/narrator-presence-gate.test.mjs')
-          test.write_text('''import test from "node:test";\nimport assert from "node:assert/strict";\nimport fs from "node:fs";\n\nconst route = fs.readFileSync(new URL("../app/api/generate-voiceover/route.ts", import.meta.url), "utf8");\nconst standard = fs.readFileSync(new URL("../app/lib/lepers-standard.ts", import.meta.url), "utf8");\nconst golden = fs.readFileSync(new URL("../app/lib/lepers-golden-master.ts", import.meta.url), "utf8");\nconst page = fs.readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");\n\ntest("primary narrator presence rule is injected into generation and correction paths", () => {\n  assert.match(route, /PRIMARY VO BEHAVIOUR RULE — ACTIVE FIFTH DINNER GUEST/);\n  assert.match(route, /narratorPresenceMetrics\(cueLines\)/);\n  assert.match(route, /narratorPresenceMetrics\(masterCueTexts\)/);\n});\n\ntest("short authentic reactions are not globally rejected", () => {\n  const observerSet = route.match(/const emptyObserverReactions = new Set\(\[([\\s\\S]*?)\]\);/)?.[1] || "";\n  assert.doesNotMatch(observerSet, /ak vai/i);\n  assert.doesNotMatch(observerSet, /nu ko/i);\n  assert.doesNotMatch(observerSet, /oho/i);\n});\n\ntest("Golden Master has an independent narrator presence release gate", () => {\n  assert.match(golden, /narratorPresence: NarratorPresenceMetrics/);\n  assert.match(golden, /creativeFreshness\.passes && narratorPresence\.passes/);\n  assert.match(route, /!goldenMaster\.narratorPresence\?\.passes/);\n});\n\ntest("production contract and default brief preserve active fifth guest without increasing VO ratio", () => {\n  assert.match(standard, /PRIMARY NARRATOR PRESENCE — OBLIGĀTS/);\n  assert.match(standard, /16\.67% princips paliek spēkā/);\n  assert.match(page, /active-fifth-diner-v6/);\n  assert.match(page, /Presence does not mean more VO/);\n});\n''')
-          PY
-      - name: Test narrator presence behaviour
-        run: node --experimental-strip-types --test tests/narrator-presence-behaviour.test.mjs tests/narrator-presence-gate.test.mjs
-      - name: Full test suite
-        run: npm test
-      - name: Production build
-        run: npm run build
-      - name: Commit verified upgrade
-        shell: bash
-        run: |
-          rm .github/workflows/dana-fifth-diner-upgrade.yml
-          git config user.name "DANA AI"
-          git config user.email "actions@users.noreply.github.com"
-          git add app tests .github/workflows/dana-fifth-diner-upgrade.yml
-          git commit -m "feat: enforce active fifth dinner guest narrator presence"
-          git push origin HEAD:dana-active-fifth-diner-v6
+          test -f package.json
+          echo "workflow-ok"

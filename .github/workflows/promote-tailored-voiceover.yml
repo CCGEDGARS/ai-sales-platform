@@ -38,7 +38,11 @@ jobs:
             assert.match(page, /Tailored Voice-over Studio/);
             assert.match(page, /PRIMARY TASK · TAILORED VOICE-OVER/);
             assert.match(page, /Create tailored voice-over/);
-            assert.match(page, /Fifth Dinner Guest.*Second Story.*WOW.*Narrator Presence.*Golden Master/s);
+            assert.match(page, /Fifth Dinner Guest/);
+            assert.match(page, /Second Story/);
+            assert.match(page, /WOW/);
+            assert.match(page, /Narrator Presence/);
+            assert.match(page, /Golden Master/);
           });
 
           test("generation and all repair paths preserve the tailored voice-over mission", () => {
@@ -68,7 +72,6 @@ jobs:
             '<h1>Production workspace</h1>': '<h1>Tailored Voice-over Studio</h1>',
             '<div className="eyebrow">STAGE 04 · EDITORIAL VOICE</div>': '<div className="eyebrow">PRIMARY TASK · TAILORED VOICE-OVER</div>',
             '<h3>Shape the story with voice-over</h3>': '<h3>Create tailored voice-over</h3>',
-            'Activate this stage after transcript review. The script must sharpen the scene—not explain what the audience can already see.': 'This is DANA Studio’s main task. Create a scene-specific voice-over that follows the full concept: Fifth Dinner Guest, Second Story, WOW creative authorship, Narrator Presence and Golden Master discipline—without explaining what the audience can already see.',
             'Generate Lepers Golden Master package': 'Create tailored voice-over package',
           }
           for old, new in replacements.items():

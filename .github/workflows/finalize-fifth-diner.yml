@@ -22,18 +22,30 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Apply verified implementation commit
-        run: git cherry-pick 7c415986a451cc31e64a1c9f9c2ac4bebbe70594
+      - name: Materialize verified implementation tree
+        shell: bash
+        run: |
+          git checkout 7c415986a451cc31e64a1c9f9c2ac4bebbe70594 -- \
+            app/api/generate-voiceover/route.ts \
+            app/lib/lepers-standard.ts \
+            app/lib/lepers-golden-master.ts \
+            app/lib/narrator-presence.ts \
+            app/page.tsx \
+            tests/narrator-presence-behaviour.test.mjs \
+            tests/narrator-presence-gate.test.mjs
       - run: npm ci
+      - name: Verify focused narrator-presence tests
+        run: node --experimental-strip-types --test tests/narrator-presence-behaviour.test.mjs tests/narrator-presence-gate.test.mjs
       - name: Verify complete test suite
         run: npm test
       - name: Verify production build
         run: npm run build
-      - name: Remove temporary finalizer and push
+      - name: Commit clean verified implementation and remove finalizer
         shell: bash
         run: |
           git config user.name "DANA AI"
           git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/finalize-fifth-diner.yml
-          git commit -m "chore: remove temporary fifth-diner finalizer"
+          git add app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts app/lib/lepers-golden-master.ts app/lib/narrator-presence.ts app/page.tsx tests/narrator-presence-behaviour.test.mjs tests/narrator-presence-gate.test.mjs
+          git commit -m "feat: enforce active fifth dinner guest narrator presence"
           git push origin HEAD:dana-active-fifth-diner-v6-final

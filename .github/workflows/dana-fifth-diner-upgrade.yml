@@ -1,4 +1,4 @@
-name: DANA Fifth Diner Smoke Test
+name: DANA Active Fifth Diner Upgrade
 
 on:
   push:
@@ -8,14 +8,58 @@ on:
       - '.github/workflows/dana-fifth-diner-upgrade.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  smoke:
+  upgrade:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify repository checkout
+        with:
+          ref: dana-active-fifth-diner-v6
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Recover and run validated upgrade script
+        shell: bash
         run: |
-          test -f package.json
-          echo "workflow-ok"
+          git show 258c183fe0eadffb5b5d37bc7dc04482050ce34b:.github/workflows/dana-fifth-diner-upgrade.yml > /tmp/old-workflow.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path('/tmp/old-workflow.yml').read_text().splitlines()
+          inside = False
+          out = []
+          for line in src:
+              if line.strip() == "python3 <<'PY'":
+                  inside = True
+                  continue
+              if inside and line.strip() == 'PY':
+                  break
+              if inside:
+                  out.append(line[10:] if line.startswith('          ') else line)
+          if not out:
+              raise SystemExit('Could not recover upgrade script from commit 258c183f')
+          Path('/tmp/apply-upgrade.py').write_text('\n'.join(out) + '\n')
+          PY
+          python3 /tmp/apply-upgrade.py
+      - name: Verify focused narrator-presence tests
+        run: node --experimental-strip-types --test tests/narrator-presence-behaviour.test.mjs tests/narrator-presence-gate.test.mjs
+      - name: Verify complete test suite
+        run: npm test
+      - name: Verify production build
+        run: npm run build
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          git config user.name "DANA AI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/api/generate-voiceover/route.ts app/lib/lepers-standard.ts app/lib/lepers-golden-master.ts app/page.tsx tests/narrator-presence-gate.test.mjs
+          if git diff --cached --quiet; then
+            echo "No implementation changes to commit."
+            exit 0
+          fi
+          git commit -m "feat: enforce active fifth dinner guest narrator presence"
+          git push origin HEAD:dana-active-fifth-diner-v6

@@ -27,6 +27,16 @@ const RATIO_REFERENCE_SOURCES = [
   "Ieva Janiševa · Season 3",
 ];
 
+const TAILORED_VOICEOVER_MISSION_RULES = `
+PRIMARY PRODUCT MISSION — TAILORED VOICE-OVER
+- DANA AI’s main job is to create a scene-specific, tailored voice-over for the actual people, dialogue, behaviour, visual evidence, story beats and editorial brief in the current material.
+- Never output generic reusable narration. Every intervention must feel written for THIS scene and THIS participant dynamic.
+- Tailoring is not a separate style option. It is the permanent operating mode beneath every tone: source-grounded character specificity, exact-moment reaction, story function, editorial point of view and production usefulness.
+- The full DANA concept remains mandatory inside every tailored result: Fifth Dinner Guest behaviour, Second Story authorship, WOW / Creative Room ambition, Format Spice where supported, Narrator Presence, Golden Master conformance, factual discipline, participant dignity and selective 16.67% VO quantity.
+- Use transcript and visual evidence as the factual substrate; use references as editorial/style benchmarks, never as a source of transferred facts.
+- Before release, ask: “Could this voice-over have been written for another episode?” If yes, it is not tailored enough and must be rewritten.
+`.trim();
+
 const GLOBAL_SCENE_DIRECTIVE_RULES = `
 GLOBAL SCENE DIRECTIVE — MANDATORY APPLICATION RULE
 - The user's Editorial brief is a GLOBAL SCENE DIRECTIVE, not a VO-only note.
@@ -425,6 +435,8 @@ function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
 
+${TAILORED_VOICEOVER_MISSION_RULES}
+
 ${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES}
@@ -475,6 +487,8 @@ ${body.transcript}`;
 
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
+
+${TAILORED_VOICEOVER_MISSION_RULES}
 
 ${PRIMARY_NARRATOR_PRESENCE_RULES}
 
@@ -892,10 +906,14 @@ export async function GET(request: Request) {
     if (data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && outputRecoveryAttempt < MAX_OUTPUT_RECOVERIES) {
       const lepersRecovery = isLepersTone(correctionTone);
       const recoverySystem = lepersRecovery
-        ? `You are DANA AI's final Latvian executive story editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling before the complete package was delivered. Regenerate the COMPLETE Lepers Golden Master package from the beginning using the original source context. Preserve verified facts, participant dignity, exact package architecture, Fifth Dinner Guest POV, Second Story, Creative Room / WOW, FORMAT SPICE and Golden Master requirements. Do not continue a truncated fragment. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+        ? `You are DANA AI's final Latvian executive story editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling before the complete package was delivered. Regenerate the COMPLETE Lepers Golden Master package from the beginning using the original source context. Preserve verified facts, participant dignity, exact package architecture, Fifth Dinner Guest POV, Second Story, Creative Room / WOW, FORMAT SPICE and Golden Master requirements. Do not continue a truncated fragment. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${TAILORED_VOICEOVER_MISSION_RULES}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
-        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling. Regenerate the COMPLETE deliverable from the beginning using the original source context; do not continue a truncated fragment. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling. Regenerate the COMPLETE deliverable from the beginning using the original source context; do not continue a truncated fragment. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${TAILORED_VOICEOVER_MISSION_RULES}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES}`;
       const recoveryUser = lepersRecovery
@@ -954,10 +972,14 @@ ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUT
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
       const lepersCorrection = isLepersTone(correctionTone);
       const correctionSystem = lepersCorrection
-        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${TAILORED_VOICEOVER_MISSION_RULES}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
-        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${TAILORED_VOICEOVER_MISSION_RULES}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} The selected tone must remain clearly recognisable after revision; do not let correction collapse into safe, predictable or reflection-only writing.`;
       const correctionUser = lepersCorrection

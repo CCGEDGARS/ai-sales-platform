@@ -8,10 +8,10 @@ import "./progress.css";
 import "./modules.css";
 
 const stages = [
-  ["01", "Knowledge base", "Reference library"],
-  ["02", "Transcription", "Authentic timecoded transcript"],
-  ["03", "Story analysis", "Editorial intelligence"],
-  ["04", "Voice-over", "Editor-ready script"],
+  ["01", "Source intelligence", "References + verified material"],
+  ["02", "Transcript foundation", "Authentic timecoded evidence"],
+  ["03", "Story shaping", "Beats, contradictions + callbacks"],
+  ["04", "Tailored voice-over", "PRIMARY · Fifth Dinner Guest · Narrator Presence"],
   ["05", "Export", "Production package"],
 ] as const;
 
@@ -1981,7 +1981,7 @@ This also removes it from the active project context.`)) return;
         <header id="workspace-top" className="topbar">
           <div>
             <div className="eyebrow">PROJECT / GIV · SEASON 11</div>
-            <h1>Production workspace</h1>
+            <h1>Tailored Voice-over Studio</h1>
           </div>
           <div className="top-actions">
             <button
@@ -2397,8 +2397,8 @@ This also removes it from the active project context.`)) return;
             >
               <div className="panel-heading compact">
                 <div>
-                  <div className="eyebrow">STAGE 04 · EDITORIAL VOICE</div>
-                  <h3>Shape the story with voice-over</h3>
+                  <div className="eyebrow">PRIMARY TASK · TAILORED VOICE-OVER</div>
+                  <h3>Create tailored voice-over</h3>
                   <p>
                     Activate this stage after transcript review. The script must
                     sharpen the scene—not explain what the audience can already
@@ -2501,7 +2501,7 @@ This also removes it from the active project context.`)) return;
                   {voiceoverStatus === "generating"
                     ? "Writing the first draft…"
                     : voiceoverTone === "Lepers Standard · premium observational comedy"
-                      ? "Generate Lepers Golden Master package"
+                      ? "Create tailored voice-over package"
                       : "Write voice-over draft"}
                 </button>
                 <button

@@ -45,6 +45,12 @@ type GoldenMasterMetrics = {
   threshold: number;
   passes: boolean;
   dimensions: Record<string, number>;
+  narratorPresence?: {
+    score: number;
+    threshold: number;
+    passes: boolean;
+    deficiencies: string[];
+  };
   creativeFreshness?: {
     score: number;
     threshold: number;
@@ -153,8 +159,9 @@ const TAILORED_TONE = "Tailored · custom editorial direction";
 const DEFAULT_EDITORIAL_TONE = "Lepers Standard · premium observational comedy";
 const GOLDEN_MASTER_LABEL = "Lepers Golden Master · locked 10/10 benchmark";
 const LEGACY_DEFAULT_EDITORIAL_BRIEF = 'Create a production-ready Latvian package for this scene at the Rihards Lepers benchmark: warm, knowing, lightly ironic and character-led. Build from contrast, reactions, awkwardness, callbacks and controlled chaos without describing obvious actions, humiliating participants or inventing facts.';
-const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive: do not submit the first reasonable idea. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Fifth Dinner Guest VO must surprise, not reflect. Never invent reality or humiliate participants; keep VO selective near 16.67%.';
-const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-wow-creative-room-v5";
+const DEFAULT_LEPERS_EDITORIAL_BRIEF = 'Create the Latvian Lepers Golden Master package in WOW mode. Be factually conservative and creatively aggressive: do not submit the first reasonable idea. Generate competing Second Story angles, reject predictable ones, choose the freshest source-grounded premise, and add FORMAT SPICE—bold callbacks, visual/editing games, provocations, metaphors and hooks that make the show richer than the raw footage. Fifth Dinner Guest VO must surprise, not reflect. Never invent reality or humiliate participants; keep VO selective near 16.67%. The narrator is the invisible fifth dinner guest and must be recognisably and conversationally present across the scene: directly react to participant statements, question or challenge weak logic, occasionally address participants, remember promises and contradictions, and build callbacks/running jokes from verified behaviour. Short live reactions are allowed when the exact moment earns them. Presence does not mean more VO.';
+const PREVIOUS_EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-25-wow-creative-room-v5";
+const EDITORIAL_BRIEF_SCHEMA_VERSION = "2026-08-31-active-fifth-diner-v6";
 const EDITORIAL_BRIEF_VERSION_KEY = "dana-ai-editorial-brief-version";
 const MAX_VOICEOVER_POLL_COUNT = 2160; // 90 minutes at 2.5s; pending job remains resumable after this window.
 const VOICEOVER_LONG_RUNNING_POLL_COUNT = 360; // 15 minutes.

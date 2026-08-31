@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
 import { LEPERS_PRODUCTION_PACKAGE_CONTRACT, LEPERS_REQUIRED_SECTIONS } from "../../lib/lepers-standard";
 import { LEPERS_GOLDEN_MASTER_FINGERPRINT, LEPERS_GOLDEN_MASTER_NAME, LEPERS_GOLDEN_MASTER_THRESHOLD, scoreLepersGoldenMaster } from "../../lib/lepers-golden-master";
+import { narratorPresenceMetrics } from "../../lib/narrator-presence";
 
 export const maxDuration = 60;
 
@@ -34,6 +35,22 @@ GLOBAL SCENE DIRECTIVE — MANDATORY APPLICATION RULE
 - Do not confine an edited brief to section 4. If the brief says to sharpen awkwardness, reduce sentiment, foreground a character contradiction, or prioritise a story line, that decision must be visible consistently throughout the package.
 - The brief must not override mandatory channel rules, the DANA Master Production System, participant dignity, factual discipline, canonical Lepers package structure or the current transcript as factual source of truth.
 - If the user's brief conflicts with a higher-priority rule, preserve the higher-priority rule and apply the brief as far as safely and editorially possible.
+`.trim();
+
+const PRIMARY_NARRATOR_PRESENCE_RULES = `
+PRIMARY VO BEHAVIOUR RULE — ACTIVE FIFTH DINNER GUEST
+- This is the highest-priority narrator behaviour rule for Gandrīz ideālas vakariņas. It overrides generic documentary narration and remains active in every tone, rewrite, correction, shortening, fact-check and Golden Master pass.
+- The narrator must feel CONVERSATIONALLY PRESENT in the room, not like a polished observer floating above the programme.
+- Behave like an invisible fifth participant who reacts in real time: answer participant statements, challenge weak logic, question confidence, warn, agree, disagree, correct, tease, predict and occasionally directly address a participant as though they could hear the narrator.
+- Direct participant-facing remarks are encouraged when natural. Do not force names into every cue.
+- Build an alliance with the viewer. The narrator is the viewer’s intelligent, slightly mischievous inner voice and may say the socially obvious thing the room leaves unsaid.
+- Maintain recognisable narrator presence across the OPENING, MIDDLE and CLOSING development whenever legitimate VO opportunities exist. One isolated joke does not satisfy this rule.
+- Keep a memory ledger: participant promises, boasts, labels, predictions, contradictions and unusual habits may become callbacks or running jokes later. When the source gives a setup, remember it.
+- Character labels and running jokes must grow from participant behaviour and verified material, never from invented traits.
+- Prefer conversational rhythm over over-written prose. A short reactive intervention can be stronger than a polished explanatory sentence.
+- The narrator may argue with the logic of a statement or situation, but never with a participant’s dignity.
+- Presence does NOT mean more VO. Preserve selective narration and the 16.67% format target. Improve distribution, attitude and interaction rather than padding runtime.
+- FINAL PRESENCE TEST: across the scene, can the audience recognise one intelligent fifth guest who has been listening, remembering and reacting? If not, rewrite before release.
 `.trim();
 
 const FIFTH_DINER_EDITORIAL_RULES = `
@@ -184,10 +201,6 @@ function isLowValueObserverCue(text: string) {
     "nu jā",
     "traki",
     "nu gan",
-    "oho",
-    "ak vai",
-    "interesanti",
-    "nu ko",
   ]);
   return emptyObserverReactions.has(normalized);
 }
@@ -227,19 +240,21 @@ function voiceoverQualityMetrics(text: string) {
   const lowValueObserverCues = cueLines.filter((line) => isLowValueObserverCue(line)).length;
   const genericDescriptiveCues = cueLines.filter((line) => isGenericDescriptiveCue(line)).length;
   const editorialValuePasses = cueCount > 0 && lowValueObserverCues === 0 && genericDescriptiveCues === 0;
-  const fifthDinerPasses = editorialValuePasses;
-  const requiresEditorialCorrection = !editorialValuePasses;
+  const narratorPresence = narratorPresenceMetrics(cueLines);
+  const fifthDinerPasses = editorialValuePasses && narratorPresence.passes;
+  const requiresEditorialCorrection = !fifthDinerPasses;
   const formatPasses =
     cueCount > 0 &&
     nonCueLines.length === 0 &&
     oversizedCues === 0 &&
-    editorialValuePasses;
+    fifthDinerPasses;
   return {
     cueCount,
     nonCueLines: nonCueLines.length,
     oversizedCues,
     lowValueObserverCues,
     genericDescriptiveCues,
+    narratorPresence,
     editorialValuePasses,
     fifthDinerPasses,
     requiresEditorialCorrection,
@@ -346,14 +361,16 @@ function lepersPackageQualityMetrics(text: string) {
   const lowValueObserverCues = masterCueTexts.filter((cue) => isLowValueObserverCue(cue)).length;
   const genericDescriptiveCues = masterCueTexts.filter((cue) => isGenericDescriptiveCue(cue)).length;
   const editorialValuePasses = cueCount > 0 && lowValueObserverCues === 0 && genericDescriptiveCues === 0;
-  const fifthDinerPasses = editorialValuePasses;
-  const requiresEditorialCorrection = !editorialValuePasses;
+  const narratorPresence = narratorPresenceMetrics(masterCueTexts);
+  const fifthDinerPasses = editorialValuePasses && narratorPresence.passes;
+  const requiresEditorialCorrection = !fifthDinerPasses;
   return {
     cueCount,
     nonCueLines: 0,
     oversizedCues: 0,
     lowValueObserverCues,
     genericDescriptiveCues,
+    narratorPresence,
     editorialValuePasses,
     fifthDinerPasses,
     requiresEditorialCorrection,
@@ -365,7 +382,7 @@ function lepersPackageQualityMetrics(text: string) {
       tableHeaderPasses &&
       cueCount >= 4 &&
       spoken.length > 0 &&
-      editorialValuePasses,
+      fifthDinerPasses,
   };
 }
 
@@ -407,6 +424,8 @@ function prompts(body: VoiceoverInput, finalRuntimeSeconds: number) {
 
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES}
 
@@ -456,6 +475,8 @@ ${body.transcript}`;
 
 SELECTED TONE: ${selectedTone}
 ${toneProfile}
+
+${PRIMARY_NARRATOR_PRESENCE_RULES}
 
 ${FIFTH_DINER_EDITORIAL_RULES}
 
@@ -768,7 +789,7 @@ export async function POST(request: Request) {
           { status: 502 },
         );
       }
-      if (goldenMaster && (!goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes)) {
+      if (goldenMaster && (!goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes)) {
         return NextResponse.json(
           {
             ok: false,
@@ -871,8 +892,12 @@ export async function GET(request: Request) {
     if (data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && outputRecoveryAttempt < MAX_OUTPUT_RECOVERIES) {
       const lepersRecovery = isLepersTone(correctionTone);
       const recoverySystem = lepersRecovery
-        ? `You are DANA AI's final Latvian executive story editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling before the complete package was delivered. Regenerate the COMPLETE Lepers Golden Master package from the beginning using the original source context. Preserve verified facts, participant dignity, exact package architecture, Fifth Dinner Guest POV, Second Story, Creative Room / WOW, FORMAT SPICE and Golden Master requirements. Do not continue a truncated fragment. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
-        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling. Regenerate the COMPLETE deliverable from the beginning using the original source context; do not continue a truncated fragment. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES}`;
+        ? `You are DANA AI's final Latvian executive story editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling before the complete package was delivered. Regenerate the COMPLETE Lepers Golden Master package from the beginning using the original source context. Preserve verified facts, participant dignity, exact package architecture, Fifth Dinner Guest POV, Second Story, Creative Room / WOW, FORMAT SPICE and Golden Master requirements. Do not continue a truncated fragment. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+
+${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. The previous response reached its output-token ceiling. Regenerate the COMPLETE deliverable from the beginning using the original source context; do not continue a truncated fragment. Preserve verified facts and participant dignity. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+
+${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES}`;
       const recoveryUser = lepersRecovery
         ? `OUTPUT EXPANSION RECOVERY ${outputRecoveryAttempt + 1}/${MAX_OUTPUT_RECOVERIES}: Produce the entire nine-part Lepers Golden Master package from the beginning. The previous draft was incomplete only because the token ceiling was reached. Keep the strongest source-grounded creative decisions, but return one complete self-contained package. Do not omit late sections, do not stop after VO MASTER, and do not merely continue from the cutoff.`
         : `OUTPUT EXPANSION RECOVERY ${outputRecoveryAttempt + 1}/${MAX_OUTPUT_RECOVERIES}: Return the complete final deliverable from the beginning. The previous response was truncated by the output-token ceiling; do not continue from the cutoff.`;
@@ -916,7 +941,7 @@ export async function GET(request: Request) {
     const quality = qualityMetricsForOutput(text, correctionTone);
     const goldenMaster = isLepersTone(correctionTone) ? scoreLepersGoldenMaster(text, finalRuntimeSeconds) : null;
     const needsCorrection =
-      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard" || Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes));
+      !quality.formatPasses || metrics.overLimit || metrics.standardStatus === "under-standard" || Boolean(goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes));
 
     if (needsCorrection && correctionAttempt < MAX_BACKGROUND_CORRECTIONS) {
       const lowerWords = Number(metadata.dana_lower_words || 0);
@@ -929,8 +954,12 @@ export async function GET(request: Request) {
           : `Keep the spoken amount inside the ${lowerWords}-${upperWords} word standard while fixing the voice-over structure.`;
       const lepersCorrection = isLepersTone(correctionTone);
       const correctionSystem = lepersCorrection
-        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
-        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} The selected tone must remain clearly recognisable after revision; do not let correction collapse into safe, predictable or reflection-only writing.`;
+        ? `You are DANA AI's final Latvian executive story editor and fifth diner. Preserve the COMPLETE Lepers Standard production package, its exact nine-part architecture, verified facts, decisive edit logic, warm lightly ironic mood and participant dignity. Every VO cue must retain active fifth-diner opinion and added value; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+
+${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} GOLDEN MASTER CONFORMANCE: preserve the original GLOBAL SCENE DIRECTIVE from previous response context and revise the complete package until the deterministic Golden Master score reaches at least ${LEPERS_GOLDEN_MASTER_THRESHOLD}/100. ${LEPERS_PRODUCTION_PACKAGE_CONTRACT}`
+        : `You are DANA AI's final Latvian television voice-over editor, fifth diner and creative executive producer. This is SELECTIVE NARRATION, not transcript summary. Preserve verified facts and participant dignity. Every cue must express an active point of view or added editorial layer; empty observer reactions are forbidden. SELECTED TONE: ${correctionTone}. ${correctionToneProfile} ${PRIMARY_NARRATOR_PRESENCE_RULES}
+
+${FIFTH_DINER_EDITORIAL_RULES} ${SECOND_STORY_EDITORIAL_RULES} ${CREATIVE_EXECUTIVE_PRODUCER_RULES} The selected tone must remain clearly recognisable after revision; do not let correction collapse into safe, predictable or reflection-only writing.`;
       const correctionUser = lepersCorrection
         ? `Revise the COMPLETE production package without deleting or renaming any required section. ${ratioInstruction} The narration ratio counts ONLY words in the GALA VO TEKSTS column of section 4. Keep the Laiks / Funkcija / GALA VO TEKSTS / Izpildījums / montāža table. Improve or trim only legitimate narrator beats; every GALA VO TEKSTS row must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Replace generic descriptive VO with opinionated Fifth Dinner Guest narration. Hunt for details the participants miss and exploit running jokes/callbacks when supported. Remove “hmm”, “jā”, “traki”, “nu gan” and similar empty observer reactions. Never pad with transcript recap. Preserve the analysis, dramaturgy, edit decisions, promo, risks, sound notes, checklist and producer recommendation at Rihards Lepers reference depth. Preserve and develop the Second Story across the package: OTRĀ STĀSTA LĪNIJA must be a source-grounded authored premise, and OTRĀ STĀSTA ATTĪSTĪBA must carry it through setup → escalation → payoff/callback. CREATIVE ROOM / WOW: preserve or rebuild the visible Creative Room with 3 finalists, 2 rejected predictable angles, 3+ FORMAT SPICE devices, the explicit new production value and the boldest defendable idea. Do not merely polish the same safe premise. GOLDEN MASTER CONFORMANCE: current score ${goldenMaster?.score ?? 0}/100. Current dimension scores: ${JSON.stringify(goldenMaster?.dimensions || {})}. Fix these measurable deficiencies without changing verified facts or losing the original Editorial brief: ${(goldenMaster?.deficiencies || []).join(" ")}\n\nPRECISION REPAIR MAP — repair deficient dimensions first and preserve dimensions already at full score:\n${goldenMasterRepairInstructions(goldenMaster)}\n\nCURRENT PACKAGE (${metrics.words} spoken VO words; ${quality.cueCount} VO rows):\n${text}`
         : `Rewrite the complete draft as genuine TV voice-over. ${ratioInstruction}\nEvery output line must use exactly: [HH:MM:SS] VO: <one or two concise sentences>. Use only narrator interventions justified by contrast, contradiction, reaction, awkwardness, anticipation, callback or comic escalation. Every cue must contain opinion, interpretation, contrast, anticipation, callback, comic framing, viewer-perspective thought, internal dialogue or a non-obvious detail. Rewrite generic descriptive VO as active Fifth Dinner Guest narration; hunt for details the participants miss and exploit callbacks when the source supports them. Remove empty “hmm”, “jā”, “traki”, “nu gan” reactions. Never add recap, biography, dialogue paraphrase or obvious action merely to reach the ratio. Do not include headings or explanatory prose. Keep each cue under 55 spoken words.\n\nCURRENT DRAFT (${metrics.words} spoken words; ${quality.cueCount} valid VO cues):\n${text}`;
@@ -959,13 +988,13 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          message: `DANA AI rejected the generated output because it did not satisfy the selected editorial format contract. Reference: ${requestId}`,
+          message: `DANA AI rejected the generated output because it did not satisfy the selected editorial format / narrator-presence contract${quality.narratorPresence ? ` (Narrator Presence ${quality.narratorPresence.score}/${quality.narratorPresence.threshold})` : ""}. Reference: ${requestId}`,
           requestId,
         },
         { status: 502 },
       );
     }
-    if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes)) {
+    if (goldenMaster && (goldenMaster.score < LEPERS_GOLDEN_MASTER_THRESHOLD || !goldenMaster.secondStory?.passes || !goldenMaster.creativeFreshness?.passes || !goldenMaster.narratorPresence?.passes)) {
       return NextResponse.json(
         {
           ok: false,

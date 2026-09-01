@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "standardVersion": "1.0.0",
+  "application": "DANA AI Production Studio — AI Sales Platform",
+  "service": "dana-ai-production-studio",
+  "productionUrl": "https://ai-sales-platform.vercel.app",
+  "manifestPath": "/api/release",
+  "expectedRef": "main",
+  "backendHealth": {
+    "url": "https://ai-sales-platform.vercel.app/api/release-health",
+    "status": 200,
+    "json": {"status": "ok", "service": "dana-ai-production-studio"}
+  },
+  "smokeChecks": [
+    {"id": "production-shell", "type": "text", "url": "/", "status": 200, "contains": ["DANA AI", "Tailored Voice-over Studio"]}
+  ],
+  "retry": {"attempts": 12, "delayMs": 10000, "timeoutMs": 15000}
+}

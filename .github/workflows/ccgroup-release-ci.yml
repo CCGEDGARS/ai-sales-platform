@@ -1,0 +1,39 @@
+name: CCGROUP Release CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run release integrity tests first
+        run: node --test tests/release-integrity-*.test.mjs
+      - name: Run repository tests
+        run: npm test
+      - name: Build production application
+        run: npm run build
+      - name: Check release JavaScript syntax
+        run: |
+          if [ -f scripts/release-integrity-core.mjs ]; then node --check scripts/release-integrity-core.mjs; fi
+          if [ -f scripts/verify-release-integrity.mjs ]; then node --check scripts/verify-release-integrity.mjs; fi

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "standardVersion": "1.0.0",
-  "application": "DANA AI Production Studio — Dana Studio",
+  "application": "DANA AI Production Studio \u2014 Dana Studio",
   "service": "dana-ai-production-studio",
   "productionUrl": "https://dana-studio-jet.vercel.app",
   "manifestPath": "/api/release",
@@ -9,10 +9,28 @@
   "backendHealth": {
     "url": "https://dana-studio-jet.vercel.app/api/release-health",
     "status": 200,
-    "json": {"status": "ok", "service": "dana-ai-production-studio"}
+    "json": {
+      "status": "ok",
+      "service": "dana-ai-production-studio"
+    }
   },
   "smokeChecks": [
-    {"id": "production-shell", "type": "text", "url": "/", "status": 200, "contains": ["DANA AI", "Tailored Voice-over Studio"]}
+    {
+      "id": "production-shell",
+      "type": "text",
+      "url": "/",
+      "status": 200,
+      "contains": [
+        "DANA AI",
+        "Tailored Voice-over Studio",
+        "Upload video or audio",
+        "WhatsApp audio"
+      ]
+    }
   ],
-  "retry": {"attempts": 12, "delayMs": 10000, "timeoutMs": 15000}
+  "retry": {
+    "attempts": 12,
+    "delayMs": 10000,
+    "timeoutMs": 15000
+  }
 }

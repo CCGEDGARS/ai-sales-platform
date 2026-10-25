@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
+import { resolveMediaType } from "../../lib/media";
 
 export const maxDuration = 300;
 
@@ -40,7 +41,9 @@ export async function POST(request: Request) {
     const uploaded = body?.uploadedFile || {};
     const name = typeof uploaded?.name === "string" ? uploaded.name.trim() : "";
     const uri = typeof uploaded?.uri === "string" ? uploaded.uri.trim() : "";
-    const mimeType = typeof uploaded?.mimeType === "string" && uploaded.mimeType.startsWith("video/") ? uploaded.mimeType : "video/mp4";
+    const media = resolveMediaType("", typeof uploaded?.mimeType === "string" ? uploaded.mimeType : "");
+    if (!media || media.kind !== "video") return NextResponse.json({ ok: false, message: "Visual analysis requires a video. Audio recordings have no visual evidence." }, { status: 400 });
+    const mimeType = media.mimeType;
     const originalFile = typeof body?.originalFile === "string" ? body.originalFile.trim() : "video";
     let model = typeof body?.model === "string" && body.model ? body.model : DEFAULT_MODEL;
 

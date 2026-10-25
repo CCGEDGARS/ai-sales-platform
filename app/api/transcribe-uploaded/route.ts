@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
+import { resolveMediaType } from "../../lib/media";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
 const DEFAULT_MODEL = "gemini-3.6-flash";
@@ -37,8 +38,11 @@ export async function POST(request: Request) {
     const uploaded = body?.uploadedFile || {};
     const name = typeof uploaded?.name === "string" ? uploaded.name.trim() : "";
     const uri = typeof uploaded?.uri === "string" ? uploaded.uri.trim() : "";
-    const mimeType = typeof uploaded?.mimeType === "string" && uploaded.mimeType.startsWith("video/") ? uploaded.mimeType : "video/mp4";
-    const originalFile = typeof body?.originalFile === "string" ? body.originalFile.trim() : "video";
+    // Use the uploaded derivative's MIME, not the original WhatsApp filename.
+    const media = resolveMediaType("", typeof uploaded?.mimeType === "string" ? uploaded.mimeType : "");
+    if (!media) return NextResponse.json({ ok: false, message: "Unsupported uploaded video or audio type." }, { status: 400 });
+    const mimeType = media.mimeType;
+    const originalFile = typeof body?.originalFile === "string" ? body.originalFile.trim() : "media";
     const referenceManifest = typeof body?.referenceManifest === "string" ? body.referenceManifest : "";
     let model = typeof body?.model === "string" && body.model ? body.model : DEFAULT_MODEL;
 
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, message: "Invalid uploaded Gemini file metadata." }, { status: 400 });
     }
 
-    const prompt = `You are producing an authentic Latvian television transcript for the original file “${originalFile}”. Transcribe this video word-for-word in fluent Latvian without polishing, inventing, summarising, or omitting speech. Identify speakers when possible. Put a timestamp relative to the beginning of the video in [HH:MM:SS] format at the beginning of every new phrase, speaker change, or significant pause. Preserve interruptions, laughter, repetitions, and unclear audio as [neskaidrs]. Return only the timecoded transcript. Never fabricate a word.\n\nThe following applied references are active in this project. They are editorial guardrails only for later analysis; they must not change, polish, replace or hallucinate anything in this factual transcript:\n${referenceManifest}`;
+    const prompt = `You are producing an authentic Latvian transcript for the original file “${originalFile}”. Transcribe this ${media.kind} word-for-word without translating, polishing, inventing, summarising, or omitting speech. Preserve the language actually spoken. Identify speakers only when distinguishable; never invent names. Put a timestamp relative to the beginning of the recording in [HH:MM:SS] format at the beginning of every new phrase, speaker change, or significant pause. Preserve interruptions, laughter, repetitions, and unclear audio as [neskaidrs]. Return only the timecoded transcript. Never fabricate a word. Audio-only input contains no visual evidence: never infer actions, appearance or scenery.\n\nThe following applied references are active in this project. They are editorial guardrails only for later analysis; they must not change, polish, replace or hallucinate anything in this factual transcript:\n${referenceManifest}`;
 
     let { response, data } = await generate(uri, mimeType, prompt, apiKey, model);
     if (!response.ok && model !== FALLBACK_MODEL && isModelAvailabilityError(response.status, data)) {
@@ -72,7 +76,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, fileName: originalFile, transcript, model, timecodes: true });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, message: error instanceof Error ? error.message : "The uploaded video could not be transcribed." },
+      { ok: false, message: error instanceof Error ? error.message : "The uploaded recording could not be transcribed." },
       { status: 502 },
     );
   }

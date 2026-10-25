@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
+import { resolveMediaType } from "../../lib/media";
 
 const NATIVE_FFMPEG_WORKER = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
 const MAX_VIDEO_BYTES = 2_000_000_000;
@@ -18,13 +19,12 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
     const fileSize = Number(body?.fileSize || 0);
-    const mimeType =
-      typeof body?.mimeType === "string" && body.mimeType.startsWith("video/")
-        ? body.mimeType
-        : "video/mp4";
+    const media = resolveMediaType(fileName, typeof body?.mimeType === "string" ? body.mimeType : "");
+    if (!media) return NextResponse.json({ ok: false, message: "Choose a supported video or audio file." }, { status: 400 });
+    const mimeType = media.mimeType;
 
     if (!fileName || !Number.isFinite(fileSize) || fileSize <= 0) {
-      return NextResponse.json({ ok: false, message: "Valid video metadata is required." }, { status: 400 });
+      return NextResponse.json({ ok: false, message: "Valid video or audio metadata is required." }, { status: 400 });
     }
     if (fileSize > MAX_VIDEO_BYTES) {
       return NextResponse.json({ ok: false, message: "This source file is larger than the supported 2 GB upload limit." }, { status: 413 });

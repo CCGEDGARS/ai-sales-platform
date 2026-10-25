@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { createFile as createMp4File } from "mp4box";
 import { buildFormattedProductionDocx } from "./lib/formatted-production-docx";
+import { MEDIA_ACCEPT, MEDIA_FORMATS, isVideoMedia, resolveMediaType } from "./lib/media";
 import "./progress.css";
 import "./modules.css";
 
@@ -65,6 +66,8 @@ type TranscriptResult = {
   transcript: string;
   model: string;
   timecodes: boolean;
+  sourceDurationSeconds?: number;
+  sourceMediaKind?: "audio" | "video";
   visualEvidence?: string;
   visualEvidenceAvailable?: boolean;
   visualEvidenceModel?: string;
@@ -498,13 +501,15 @@ export default function Home() {
     `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   const uploadVideoDirectlyToGemini = async (file: File) => {
+    const media = resolveMediaType(file.name, file.type);
+    if (!media) throw new Error(`Unsupported video or audio file: ${file.name}`);
     const sessionResponse = await fetch("/api/gemini-upload-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fileName: file.name,
         fileSize: file.size,
-        mimeType: file.type || "video/mp4",
+        mimeType: media.mimeType,
       }),
     });
     const session = await sessionResponse.json().catch(() => ({}));
@@ -517,7 +522,7 @@ export default function Home() {
       headers: {
         "X-Goog-Upload-Offset": "0",
         "X-Goog-Upload-Command": "upload, finalize",
-        "Content-Type": file.type || "video/mp4",
+        "Content-Type": media.mimeType,
       },
       body: file,
     });
@@ -528,7 +533,9 @@ export default function Home() {
     return {
       name: uploadedData.file.name as string,
       uri: uploadedData.file.uri as string,
-      mimeType: uploadedData.file.mimeType || file.type || "video/mp4",
+      mimeType: uploadedData.file.mimeType || media.mimeType,
+      sourceDurationSeconds: Number(uploadedData.sourceDurationSeconds) || 0,
+      sourceMediaKind: uploadedData.sourceMediaKind as "audio" | "video" | undefined,
     };
   };
 
@@ -545,15 +552,15 @@ export default function Home() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data?.ok) {
-        throw new Error(data?.message || `Gemini could not inspect the uploaded video (HTTP ${response.status}).`);
+        throw new Error(data?.message || `Gemini could not inspect the uploaded recording (HTTP ${response.status}).`);
       }
       const state = typeof data?.state === "string" ? data.state : "PROCESSING";
       if (state === "ACTIVE") return;
-      if (state === "FAILED") throw new Error(data?.error || "Gemini failed while preparing the uploaded video.");
-      onUpdate(`Gemini is preparing ${data?.displayName || "the video"}…`, Math.min(62, 43 + Math.floor(attempt / 3)));
+      if (state === "FAILED") throw new Error(data?.error || "Gemini failed while preparing the uploaded recording.");
+      onUpdate(`Gemini is preparing ${data?.displayName || "the recording"}…`, Math.min(62, 43 + Math.floor(attempt / 3)));
       await new Promise((resolve) => window.setTimeout(resolve, 5000));
     }
-    throw new Error("Gemini is still preparing the video after 15 minutes. The request was stopped safely.");
+    throw new Error("Gemini is still preparing the recording after 15 minutes. The request was stopped safely.");
   };
 
   const transcribeVideoDirectly = async (
@@ -561,10 +568,13 @@ export default function Home() {
     apiKey: string,
     onUpdate: (detail: string, percent: number) => void,
   ): Promise<TranscriptResult> => {
-    onUpdate(`Uploading ${file.name} directly to Gemini…`, 40);
+    const media = resolveMediaType(file.name, file.type);
+    if (!media) throw new Error(`Unsupported video or audio file: ${file.name}`);
+    onUpdate(`Uploading ${file.name}${media.kind === "audio" ? " and preparing audio" : " directly to Gemini"}…`, 40);
     const uploaded = await uploadVideoDirectlyToGemini(file);
+    if (uploaded.sourceMediaKind) media.kind = uploaded.sourceMediaKind;
     await waitForGeminiVideo(uploaded.name, apiKey, onUpdate);
-    onUpdate("Gemini is transcribing the video…", 70);
+    onUpdate(`Gemini is transcribing the ${media.kind}…`, 70);
     const response = await fetch("/api/transcribe-uploaded", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -578,6 +588,20 @@ export default function Home() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.ok) {
       throw new Error(data?.message || `Gemini transcription failed (HTTP ${response.status}).`);
+    }
+
+    if (media.kind === "audio") {
+      onUpdate("Audio transcript returned. Visual analysis is not applicable.", 90);
+      return {
+        fileName: data.fileName || file.name,
+        transcript: data.transcript,
+        model: data.model || GEMINI_DIRECT_MODEL,
+        timecodes: data.timecodes === true,
+        sourceDurationSeconds: uploaded.sourceDurationSeconds,
+        visualEvidence: "",
+        visualEvidenceAvailable: false,
+        visualEvidenceModel: "",
+      };
     }
 
     onUpdate("Gemini is creating a separate Visual Evidence Pass…", 82);
@@ -616,6 +640,7 @@ export default function Home() {
       transcript: data.transcript,
       model: data.model || GEMINI_DIRECT_MODEL,
       timecodes: data.timecodes === true,
+      sourceDurationSeconds: uploaded.sourceDurationSeconds,
       visualEvidence,
       visualEvidenceAvailable,
       visualEvidenceModel,
@@ -627,9 +652,11 @@ export default function Home() {
     apiKey: string,
     onUpdate: (detail: string, percent: number) => void,
   ): Promise<Pick<TranscriptResult, "visualEvidence" | "visualEvidenceAvailable" | "visualEvidenceModel">> => {
+    if (!isVideoMedia(file)) return { visualEvidence: "", visualEvidenceAvailable: false, visualEvidenceModel: "" };
     try {
       onUpdate(`Uploading ${file.name} for the separate Visual Evidence Pass…`, 72);
       const uploaded = await uploadVideoDirectlyToGemini(file);
+      if (uploaded.sourceMediaKind === "audio") return { visualEvidence: "", visualEvidenceAvailable: false, visualEvidenceModel: "" };
       await waitForGeminiVideo(uploaded.name, apiKey, onUpdate);
       const response = await fetch("/api/visual-evidence-uploaded", {
         method: "POST",
@@ -725,11 +752,10 @@ export default function Home() {
   const chooseFile = () => fileInput.current?.click();
   const onFiles = (files?: FileList | null) => {
     if (!files?.length) return;
-    const selected = Array.from(files).filter(
-      (file) =>
-        /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(file.name) ||
-        file.type.startsWith("video/"),
-    );
+    const incoming = Array.from(files);
+    const selected = incoming.filter((file) => file.size > 0 && file.size <= 2_000_000_000 && resolveMediaType(file.name, file.type));
+    const rejected = incoming.filter((file) => !selected.includes(file));
+    setProcessingMessage(rejected.length ? `Could not add: ${rejected.map((file) => file.name).join(", ")}. Choose a supported, non-empty video or audio file up to 2 GB.` : "");
     if (!selected.length) return;
     setVideoFiles((current) => {
       const merged = [...current, ...selected].filter(
@@ -741,7 +767,7 @@ export default function Home() {
       setFileName(
         merged.length === 1
           ? merged[0].name
-          : `${merged.length} videos selected`,
+          : `${merged.length} files selected`,
       );
       return merged;
     });
@@ -759,7 +785,7 @@ export default function Home() {
           ? ""
           : remaining.length === 1
             ? remaining[0].name
-            : `${remaining.length} videos selected`,
+            : `${remaining.length} files selected`,
       );
       setUploaded(remaining.length > 0);
       return remaining;
@@ -1097,24 +1123,37 @@ This also removes it from the active project context.`)) return;
     }
     const totalVideoBytes = videoFiles.reduce((total, file) => total + file.size, 0);
     const nativeProxySafe =
-      nativeFfmpeg && videoFiles.length === 1 && totalVideoBytes <= VERCEL_NATIVE_PROXY_LIMIT;
+      nativeFfmpeg && videoFiles.length === 1 && isVideoMedia(videoFiles[0]) && totalVideoBytes <= VERCEL_NATIVE_PROXY_LIMIT;
     setPreferredTool("Gemini 3.6 Flash");
     setProcessing(true);
     setProcessed(false);
     setProcessingMessage("");
     setProcessingStage("inspecting");
     setProcessingPercent(2);
-    setProcessingDetail("Checking the selected videos…");
+    setProcessingDetail("Checking the selected video and audio files…");
     setProcessingStartedAt(Date.now());
     setProcessingElapsed(0);
     try {
       const segments: SegmentPayload[] = [];
       const durations = await Promise.all(videoFiles.map((file) => new Promise<number>((resolve) => {
-        const element = document.createElement("video");
+        const element = document.createElement(isVideoMedia(file) ? "video" : "audio");
         const url = URL.createObjectURL(file);
+        let settled = false;
+        const finish = (seconds: number) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timer);
+          element.onloadedmetadata = null;
+          element.onerror = null;
+          element.removeAttribute("src");
+          element.load();
+          URL.revokeObjectURL(url);
+          resolve(Number.isFinite(seconds) && seconds > 0 ? seconds : 0);
+        };
+        const timer = window.setTimeout(() => finish(0), 8000);
         element.preload = "metadata";
-        element.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Number(element.duration) || 0); };
-        element.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+        element.onloadedmetadata = () => finish(Number(element.duration));
+        element.onerror = () => finish(0);
         element.src = url;
       })));
       setFinalRuntimeSeconds(durations.reduce((total, duration) => total + duration, 0));
@@ -1131,7 +1170,7 @@ This also removes it from the active project context.`)) return;
         setProcessingDetail(
           nativeProxySafe
             ? `File ${index + 1} of ${videoFiles.length} · native stream-copy path`
-            : `File ${index + 1} of ${videoFiles.length} · direct video path${durations[index] > 15 * 60 ? " · long-video mode" : ""}`,
+            : `File ${index + 1} of ${videoFiles.length} · ${isVideoMedia(file) ? "video" : "audio"} transcription${durations[index] > 15 * 60 ? " · long recording" : ""}`,
         );
         // Direct Gemini is deliberately the fallback. It avoids the old
         // MediaRecorder/MP4Box browser re-encoding trap and supports long
@@ -1158,7 +1197,7 @@ This also removes it from the active project context.`)) return;
       );
       setTranscriptionMessage(
         nativeProxySafe
-          ? "Secure upload is sending the video directly to Gemini, then the system will transcribe, offset, merge and validate it."
+          ? "Secure upload is sending the recording to Gemini, then the system will transcribe, offset, merge and validate it."
           : "The browser is uploading the source directly to Gemini so the hosted app cannot time out.",
       );
       let results: TranscriptResult[] = [];
@@ -1190,7 +1229,7 @@ This also removes it from the active project context.`)) return;
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.message || "The native transcription worker returned an error.");
         results = result.results || [];
-        if (results.length && videoFiles[0]) {
+        if (results.length && videoFiles[0] && results[0].sourceMediaKind !== "audio") {
           const visual = await analyzeVisualEvidenceDirectly(
             videoFiles[0],
             geminiKey.trim(),
@@ -1208,7 +1247,9 @@ This also removes it from the active project context.`)) return;
         setProcessingStage("uploading");
         setProcessingPercent(40);
         const directResults: TranscriptResult[] = [];
+        cumulativeStartSeconds = 0;
         for (const segment of segments) {
+          segment.startSeconds = cumulativeStartSeconds;
           setProcessingStage("transcribing");
           const directResult = await transcribeVideoDirectly(
             segment.file,
@@ -1259,8 +1300,14 @@ This also removes it from the active project context.`)) return;
             visualEvidence: adjustedVisualEvidence,
             visualEvidenceAvailable: Boolean(adjustedVisualEvidence.trim()),
           });
+          const sourceDuration = directResult.sourceDurationSeconds || durations[directResults.length - 1];
+          if (!sourceDuration && directResults.length < segments.length) {
+            throw new Error(`Could not determine the duration of ${segment.originalFile} for the combined timeline. Process this file separately.`);
+          }
+          cumulativeStartSeconds += sourceDuration || inferRuntimeFromTranscript(directResult.transcript);
         }
         results = directResults;
+        setFinalRuntimeSeconds(cumulativeStartSeconds);
       }
       setTranscriptResults(results);
       setProcessingStage("merging");
@@ -1755,7 +1802,7 @@ This also removes it from the active project context.`)) return;
               return `${index + 1}\n${h}:${m}:${s},000 --> ${eh}:${em}:${es},000\n${text}\n`;
             })
             .join("\n")
-        : `DANA AI PRODUCTION STUDIO\n${title}\n\nExported: ${new Date().toLocaleString("lv-LV")}\nStatus: ${uploaded ? (processed ? "Transcript returned" : "Video queued") : "No video uploaded"}\nGemini: ${geminiStatus}\nChunk length: ${chunkLength} minutes\n\n${transcriptText}`;
+        : `DANA AI PRODUCTION STUDIO\n${title}\n\nExported: ${new Date().toLocaleString("lv-LV")}\nStatus: ${uploaded ? (processed ? "Transcript returned" : "Recording queued") : "No recording uploaded"}\nGemini: ${geminiStatus}\nChunk length: ${chunkLength} minutes\n\n${transcriptText}`;
     try {
       downloadBlob(
         new Blob([body], {
@@ -1805,8 +1852,8 @@ This also removes it from the active project context.`)) return;
               uploaded
                 ? processed
                   ? "Transcript returned and ready for review."
-                  : "Video is queued for transcription."
-                : "No video has been uploaded yet.",
+                  : "Recording is queued for transcription."
+                : "No recording has been uploaded yet.",
             ),
             new Paragraph(transcriptText),
           ],
@@ -1950,7 +1997,7 @@ This also removes it from the active project context.`)) return;
         <input
           ref={fileInput}
           type="file"
-          accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v"
+          accept={MEDIA_ACCEPT}
           multiple
           hidden
           onChange={(e) => onFiles(e.target.files)}
@@ -1996,7 +2043,7 @@ This also removes it from the active project context.`)) return;
               aria-label="Help"
               onClick={() =>
                 setProjectMessage(
-                  "Workflow: select video → connect Gemini → Start transcription → review transcript → generate voice-over → export.",
+                  "Workflow: select video or audio → connect Gemini → Start transcription → review transcript → generate voice-over → export.",
                 )
               }
             >
@@ -2089,7 +2136,7 @@ This also removes it from the active project context.`)) return;
               <div className="panel-heading">
                 <div>
                   <div className="eyebrow">CURRENT STAGE · 02</div>
-                  <h3>Upload raw video</h3>
+                  <h3>Upload video or audio</h3>
                   <p>
                     Generate an authentic Latvian transcript with precise
                     timecodes.
@@ -2112,13 +2159,13 @@ This also removes it from the active project context.`)) return;
                 <div className="upload-icon">{uploaded ? "✓" : "↑"}</div>
                 <b>
                   {uploaded
-                    ? `${videoFiles.length} video${videoFiles.length === 1 ? "" : "s"} queued for transcription`
-                    : "Drop a video here or browse files"}
+                    ? `${videoFiles.length} file${videoFiles.length === 1 ? "" : "s"} queued for transcription`
+                    : "Drop video or audio here, including WhatsApp recordings"}
                 </b>
                 <span>
                   {uploaded
                     ? "Select more files any time · originals remain untouched"
-                    : "MP4, MOV or MKV · select multiple files"}
+                    : MEDIA_FORMATS}
                 </span>
                 <button
                   type="button"
@@ -2128,17 +2175,17 @@ This also removes it from the active project context.`)) return;
                     chooseFile();
                   }}
                 >
-                  {uploaded ? "＋ Add videos" : "Browse video"}
+                  {uploaded ? "＋ Add files" : "Browse files"}
                 </button>
               </div>
               {videoFiles.length > 0 && (
-                <div className="selected-files" aria-label="Selected videos">
+                <div className="selected-files" aria-label="Selected video and audio files">
                   {videoFiles.map((file) => (
                     <div
                       className="selected-file"
                       key={`${file.name}-${file.size}`}
                     >
-                      <span>▶ {file.name}</span>
+                      <span>{isVideoMedia(file) ? "▶" : "♫"} {file.name}</span>
                       <button
                         type="button"
                         onClick={() => removeVideo(file.name, file.size)}
@@ -2152,11 +2199,11 @@ This also removes it from the active project context.`)) return;
               )}
               <div className="processing-options">
                 <div>
-                  <b>Fast MP4 stream-copy → Gemini → merge</b>
+                  <b>Video + audio → Gemini → timecoded transcript</b>
                   <small>
-                    Long MP4 files are split by container structure without
-                    re-encoding. Segments are keyframe-aligned, retain the
-                    original quality, and receive original timeline offsets.
+                    WhatsApp and other audio recordings are prepared automatically.
+                    Video retains its existing processing. Multiple files follow
+                    the selected order with their timeline offsets preserved.
                   </small>
                 </div>
                 <label>
@@ -2601,7 +2648,7 @@ This also removes it from the active project context.`)) return;
                     ? "Segments were prepared and are being submitted in order."
                     : preferredTool
                       ? "Start runs the secure direct upload, Gemini transcription, offset correction, merge and validation workflow."
-                      : "Upload a video to begin. The app will not claim transcription completion until a real validated transcript is returned."}
+                      : "Upload video or audio to begin. The app will not claim transcription completion until a real validated transcript is returned."}
               </p>
               <button
                 className="primary-btn full"
@@ -2612,7 +2659,7 @@ This also removes it from the active project context.`)) return;
                   ? "Processing…"
                   : uploaded
                     ? "Start transcription"
-                    : "Choose a video"}{" "}
+                    : "Choose video or audio"}{" "}
                 <span>→</span>
               </button>
               {(processing ||
@@ -2705,7 +2752,7 @@ This also removes it from the active project context.`)) return;
                 <span className="tool-logo gemini">✦</span>
                 <div>
                   <b>Gemini 3.6 Flash</b>
-                    <small>Primary video transcription · Latvian timecodes</small>
+                    <small>Video and audio transcription · Latvian timecodes</small>
                 </div>
                 <span className="connected">
                   {geminiStatus === "Connected"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getStoredKey } from "../../lib/credentials";
+import { resolveMediaType } from "../../lib/media";
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com";
 // Current stable multimodal model. Keep this in one place so the connection
@@ -12,6 +13,8 @@ type SegmentInfo = { startSeconds: number; originalFile: string };
 const NATIVE_FFMPEG_WORKER = (process.env.FFMPEG_WORKER_URL || "https://ffmpeg-worker-02na.onrender.com").replace(/\/$/, "");
 
 async function uploadToGemini(file: File, apiKey: string) {
+  const media = resolveMediaType(file.name, file.type);
+  if (!media) throw new Error(`Unsupported media file: ${file.name}`);
   const bytes = await file.arrayBuffer();
   const start = await fetch(`${GEMINI_BASE}/upload/v1beta/files`, {
     method: "POST",
@@ -20,7 +23,7 @@ async function uploadToGemini(file: File, apiKey: string) {
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
       "X-Goog-Upload-Header-Content-Length": String(bytes.byteLength),
-      "X-Goog-Upload-Header-Content-Type": file.type || "video/mp4",
+      "X-Goog-Upload-Header-Content-Type": media.mimeType,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ file: { display_name: file.name } }),
@@ -34,13 +37,13 @@ async function uploadToGemini(file: File, apiKey: string) {
       "Content-Length": String(bytes.byteLength),
       "X-Goog-Upload-Offset": "0",
       "X-Goog-Upload-Command": "upload, finalize",
-      "Content-Type": file.type || "video/mp4",
+      "Content-Type": media.mimeType,
     },
     body: bytes,
   });
   const uploadedData = await uploaded.json().catch(() => ({}));
   if (!uploaded.ok || !uploadedData?.file?.uri) throw new Error(uploadedData?.error?.message || `Gemini rejected ${file.name} (HTTP ${uploaded.status}).`);
-  return { name: uploadedData.file.name as string, uri: uploadedData.file.uri as string, mimeType: uploadedData.file.mimeType || file.type || "video/mp4" };
+  return { name: uploadedData.file.name as string, uri: uploadedData.file.uri as string, mimeType: uploadedData.file.mimeType || media.mimeType };
 }
 
 async function waitUntilActive(name: string, apiKey: string) {
@@ -131,7 +134,8 @@ export async function POST(request: Request) {
     let segmentInfo: SegmentInfo[] = [];
     try { segmentInfo = JSON.parse(segmentInfoRaw) as SegmentInfo[]; } catch { segmentInfo = []; }
     if (!apiKey) return NextResponse.json({ ok: false, message: "Gemini API key is missing. Save and connect Gemini first." }, { status: 400 });
-    if (!files.length) return NextResponse.json({ ok: false, message: "No video files were submitted." }, { status: 400 });
+    if (!files.length) return NextResponse.json({ ok: false, message: "No video or audio files were submitted." }, { status: 400 });
+    if (files.some((file) => !resolveMediaType(file.name, file.type))) return NextResponse.json({ ok: false, message: "An unsupported video or audio file was submitted." }, { status: 400 });
 
     if (processor === "native") {
       if (!NATIVE_FFMPEG_WORKER) {

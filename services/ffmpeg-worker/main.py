@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import asyncio
 import time
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-app = FastAPI(title="DANA AI Native FFmpeg Worker", version="1.2.0")
+app = FastAPI(title="DANA AI Native FFmpeg Worker", version="1.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://dana-studio-jet.vercel.app"],
@@ -33,7 +34,9 @@ def health():
     ffprobe = shutil.which("ffprobe")
     return {
         "ok": bool(ffmpeg and ffprobe),
-        "version": "native-ffmpeg-1.2-upload-proxy",
+        "version": "native-ffmpeg-1.3-audio",
+        "audioNormalization": True,
+        "commit": os.environ.get("RENDER_GIT_COMMIT", ""),
         "ffmpeg": bool(ffmpeg),
         "ffprobe": bool(ffprobe),
     }
@@ -84,9 +87,34 @@ def run(command: list[str]) -> str:
 def duration(path: Path) -> float:
     value = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)])
     seconds = float(value)
-    if seconds <= 0:
-        raise RuntimeError("Could not read the source video duration")
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise RuntimeError("Could not read the source recording duration")
     return seconds
+
+
+def prepare_audio_upload(source: Path) -> tuple[Path, float]:
+    """Decode to an isolated lossless derivative; never modify original bytes.
+
+    FLAC avoids relying on browser MIME or Gemini container/codec detection for
+    WhatsApp Ogg/Opus, raw AAC, phone recordings and audio-only WebM.
+    """
+    derivative = source.parent / "normalized-audio.flac"
+    if derivative == source:
+        derivative = source.parent / "normalized-audio-derivative.flac"
+    run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(source),
+         "-map", "0:a:0", "-vn", "-c:a", "flac", str(derivative)])
+    return derivative, duration(derivative)
+
+
+def inspect_media(source: Path) -> dict:
+    data = json.loads(run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type:stream_disposition=attached_pic", "-of", "json", str(source)]))
+    streams = data.get("streams", [])
+    has_video = any(stream.get("codec_type") == "video" and not stream.get("disposition", {}).get("attached_pic") for stream in streams)
+    has_audio = any(stream.get("codec_type") == "audio" for stream in streams)
+    if not has_video and not has_audio:
+        raise RuntimeError("The source contains no usable video or audio stream")
+    seconds = float(data.get("format", {}).get("duration") or 0)
+    return {"kind": "video" if has_video else "audio", "duration": seconds if math.isfinite(seconds) and seconds > 0 else 0}
 
 
 def timestamp(seconds: float) -> str:
@@ -185,13 +213,21 @@ async def upload_proxy(token: str, request: Request):
         expected = int(ticket["fileSize"])
         if written != expected:
             raise RuntimeError(f"Upload size mismatch: expected {expected} bytes, received {written}.")
+        upload_source = source
+        mime_type = ticket["mimeType"]
+        inspected = await asyncio.to_thread(inspect_media, source)
+        source_kind = "audio" if mime_type.startswith("audio/") else inspected["kind"]
+        source_duration = inspected["duration"]
+        if source_kind == "audio":
+            upload_source, source_duration = await asyncio.to_thread(prepare_audio_upload, source)
+            mime_type = "audio/flac"
         file_data = await gemini_upload(
-            source,
+            upload_source,
             ticket["geminiApiKey"],
-            ticket["mimeType"],
+            mime_type,
             ticket["fileName"],
         )
-        return {"file": file_data}
+        return {"file": file_data, "sourceDurationSeconds": source_duration, "sourceMediaKind": source_kind}
     except httpx.HTTPStatusError as error:
         detail = error.response.text[-1200:] if error.response is not None else str(error)
         return JSONResponse({"ok": False, "message": f"Gemini upload failed: {detail}"}, status_code=502)
@@ -219,7 +255,7 @@ async def gemini_transcribe(file_data: dict, api_key: str, model: str, original:
             await asyncio.sleep(5)
         else:
             raise RuntimeError(f"Gemini is still preparing {original} after 10 minutes")
-        prompt = f"Transcribe this video segment word-for-word in fluent Latvian. Original file: {original}. Put [HH:MM:SS] at every new phrase, speaker change or significant pause, relative to this segment. Preserve interruptions, laughter, repetitions and unclear audio as [neskaidrs]. Return only the timecoded transcript; never invent or summarize.\n\nSeven applied production references are active as editorial guardrails. They must not alter the factual transcript, but they are part of the registered production context:\n{reference_manifest}"
+        prompt = f"Transcribe this recording segment word-for-word, preserving the spoken language without translation. Original file: {original}. Identify speakers only when distinguishable; never invent names. Put [HH:MM:SS] at every new phrase, speaker change or significant pause, relative to this segment. Preserve interruptions, laughter, repetitions and unclear audio as [neskaidrs]. Return only the timecoded transcript; never invent or summarize. Audio-only input has no visual evidence.\n\nApplied production references are editorial guardrails only and must not alter the factual transcript:\n{reference_manifest}"
         response = await client.post(f"{GEMINI_BASE}/v1beta/models/{model}:generateContent", headers={"x-goog-api-key": api_key, "Content-Type": "application/json"}, json={"contents": [{"parts": [{"file_data": {"mime_type": file_data.get("mimeType", "video/mp4"), "file_uri": file_data["uri"]}}, {"text": prompt}]}]})
         response.raise_for_status()
         parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -242,7 +278,7 @@ async def transcribe_segment(segment: Segment, api_key: str, model: str, referen
     The returned offset is kept beside the transcript so concurrent work can
     never reorder or misalign the merged result.
     """
-    uploaded = await gemini_upload(segment.path, api_key)
+    uploaded = await gemini_upload(segment.path, api_key, "audio/flac" if segment.path.suffix == ".flac" else "video/mp4")
     transcript = await gemini_transcribe(uploaded, api_key, model, segment.original, reference_manifest)
     return transcript, segment.start
 
@@ -256,16 +292,22 @@ async def process(files: list[UploadFile] = File(...), geminiApiKey: str = Form(
         chunk = max(60, int(float(chunkLength) * 60))
         overlap = 3
         prepared: list[Segment] = []
-        for incoming in files:
-            source = root / Path(incoming.filename or "source.mp4").name
+        source_kinds: list[str] = []
+        for file_index, incoming in enumerate(files):
+            file_root = root / str(file_index)
+            file_root.mkdir()
+            source = file_root / Path(incoming.filename or "source.mp4").name
             source.write_bytes(await incoming.read())
+            audio_only = (incoming.content_type or "").startswith("audio/") or (await asyncio.to_thread(inspect_media, source))["kind"] == "audio"
+            source_kinds.append("audio" if audio_only else "video")
             total = duration(source)
             starts = [0] if total <= 15 * 60 else list(range(0, int(total), chunk))
             for index, nominal in enumerate(starts):
                 start = max(0, nominal - overlap if index else 0)
-                length = min(total - start, chunk + (overlap if index and nominal + chunk < total else 0))
-                segment = root / f"{source.stem}_segment_{index + 1:03d}.mp4"
-                run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(start), "-i", str(source), "-t", str(length), "-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero", str(segment)])
+                length = total if len(starts) == 1 else min(total - start, chunk + (overlap if index and nominal + chunk < total else 0))
+                segment = file_root / f"{source.stem}_segment_{index + 1:03d}{'.flac' if audio_only else '.mp4'}"
+                output_options = ["-map", "0:a:0", "-vn", "-c:a", "flac"] if audio_only else ["-map", "0", "-c", "copy", "-avoid_negative_ts", "make_zero"]
+                await asyncio.to_thread(run, ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-ss", str(start), "-i", str(source), "-t", str(length), *output_options, str(segment)])
                 prepared.append(Segment(segment, start, source.name))
 
         semaphore = asyncio.Semaphore(3)
@@ -278,7 +320,7 @@ async def process(files: list[UploadFile] = File(...), geminiApiKey: str = Form(
         merged = merge(merged_items)
         if not merged:
             raise RuntimeError("The merged transcript is empty")
-        return {"ok": True, "model": model, "results": [{"fileName": "Merged transcript", "transcript": merged, "model": model, "timecodes": True}], "segmentCount": len(prepared), "processor": "native-ffmpeg", "overlapSeconds": overlap, "appliedReferenceCount": len([line for line in referenceManifest.splitlines() if re.match(r"^\d+\. ", line)])}
+        return {"ok": True, "model": model, "results": [{"fileName": "Merged transcript", "transcript": merged, "model": model, "timecodes": True, "sourceMediaKind": "audio" if all(kind == "audio" for kind in source_kinds) else "video"}], "segmentCount": len(prepared), "processor": "native-ffmpeg", "overlapSeconds": overlap, "appliedReferenceCount": len([line for line in referenceManifest.splitlines() if re.match(r"^\d+\. ", line)])}
     except Exception as error:
         return JSONResponse({"ok": False, "message": str(error)}, status_code=502)
     finally:
